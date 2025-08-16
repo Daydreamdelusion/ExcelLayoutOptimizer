@@ -127,7 +127,7 @@ Private Type OptimizationStats
 End Type
 
 '--------------------------------------------------
-' v3.0 新增类型定义
+' v2.0 新增类型定义
 '--------------------------------------------------
 ' 配置参数结构
 Private Type OptimizationConfig
@@ -1471,7 +1471,7 @@ End Sub
 Sub ShowSystemInfo()
     Dim info As String
     
-    info = "Excel智能布局优化系统 v3.1" & vbCrLf & vbCrLf
+    info = "Excel智能布局优化系统 v2.1" & vbCrLf & vbCrLf
     info = info & "新增功能：" & vbCrLf
     info = info & "✅ 撤销机制 - 支持撤销上次优化" & vbCrLf
     info = info & "✅ 预览功能 - 优化前显示预览信息" & vbCrLf
@@ -1494,8 +1494,8 @@ Sub ShowSystemInfo()
     info = info & "• 建议在处理前保存文件" & vbCrLf
     info = info & "• 大数据集处理可能需要较长时间" & vbCrLf
     info = info & "• 处理过程中可按ESC键中断" & vbCrLf & vbCrLf
-    info = info & "作者：hsd" & vbCrLf
-    info = info & "版本：3.1" & vbCrLf
+    info = info & "作者：dadada" & vbCrLf
+    info = info & "版本：2.1" & vbCrLf
     info = info & "更新日期：2025年8月16日"
     
     MsgBox info, vbInformation, "关于 Excel布局优化系统"
