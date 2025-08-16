@@ -6,15 +6,15 @@ Attribute VB_Name = "ExcelLayoutOptimizer"
 ' 开发：VBA专用，纯单模块解决方案
 ' 依赖：无外部依赖，仅使用Excel内置VBA功能
 ' 版本：3.1
-' 作者：hsd
+' 作者：huangsheng
 ' 创建：2025年
 ' 最后更新：2025年8月16日
 '
 ' 修改日志：
-' 2025-08-16 v3.1 - hsd
+' 2025-08-16 v3.1 - huangsheng
 '   - 重构代码以彻底解决“行继续标志太多”的编译错误。
 '   - 将所有多行 MsgBox 和 InputBox 的字符串拼接重构为变量赋值，提高代码可读性和稳定性。
-' 2025-08-16 v3.0 - hsd
+' 2025-08-16 v3.0 - huangsheng
 '   - 添加撤销机制支持
 '   - 添加预览功能
 '   - 添加配置管理
@@ -23,7 +23,7 @@ Attribute VB_Name = "ExcelLayoutOptimizer"
 '   - 修复PreviewInfo类型定义缺失
 '   - 修复配置管理全局变量缺失
 '   - 修复API声明兼容性问题
-' 2025-XX-XX v2.0 - hsd
+' 2025-06-09 v2.0 - huangsheng
 '   - 初始版本，核心优化功能
 '==================================================
 
