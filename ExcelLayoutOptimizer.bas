@@ -45,7 +45,7 @@ Private Const DEFAULT_MAX_COLUMN_WIDTH As Double = 70  ' 增加到70以支持更
 Private Const EXTREME_TEXT_WIDTH As Double = 120        ' 极长文本固定宽度
 Private Const LONG_TEXT_THRESHOLD As Long = 100         ' 长文本阈值（字符数）
 Private Const VERY_LONG_TEXT_THRESHOLD As Long = 200    ' 极长文本阈值（字符数）
-Private Const MAX_WRAP_LINES As Long = 10               ' 最大换行行数
+Private Const MAX_WRAP_LINES As Long = 3                ' 最大换行行数（限制为3行避免过高）
 
 ' 列宽边界控制（像素）
 Private Const MIN_COLUMN_WIDTH_PIXELS As Long = 50
@@ -424,6 +424,32 @@ Public Sub QuickOptimize()
 End Sub
 
 '--------------------------------------------------
+' 保守优化入口（新增）- 避免行高过度调整
+'--------------------------------------------------
+Public Sub ConservativeOptimize()
+    If Not g_ConfigInitialized Then
+        InitializeDefaultConfig
+    End If
+    
+    ' 保存原始配置
+    Dim originalConfig As OptimizationConfig
+    originalConfig = g_Config
+    
+    ' 使用保守设置
+    g_Config.ShowPreview = False
+    g_Config.HeaderPriority = False       ' 关闭标题优先，避免过度行高调整
+    g_Config.SmartLineBreak = False       ' 关闭智能断行
+    g_Config.MaxWrapLines = 2             ' 最多2行换行
+    g_Config.HeaderMaxWrapLines = 2       ' 标题最多2行换行
+    
+    ' 执行优化
+    OptimizeLayout
+    
+    ' 恢复原始配置
+    g_Config = originalConfig
+End Sub
+
+'--------------------------------------------------
 ' 撤销上次优化
 '--------------------------------------------------
 Public Sub UndoLastOptimization()
@@ -690,6 +716,16 @@ Private Function AnalyzeColumnEnhanced(dataArray As Variant, columnIndex As Long
     analysis.HeaderWidth = 0
     analysis.HeaderNeedWrap = False
     analysis.HeaderRowHeight = g_Config.HeaderMinHeight
+    
+    ' 检查是否为隐藏列，如果是隐藏列则跳过处理
+    If columnRange.Hidden Then
+        analysis.DataType = DataType.ShortText
+        analysis.MaxContentWidth = columnRange.ColumnWidth ' 保持原始宽度
+        analysis.OptimalWidth = columnRange.ColumnWidth
+        analysis.NeedWrap = False
+        AnalyzeColumnEnhanced = analysis
+        Exit Function
+    End If
     
     If analysis.HasMergedCells Then
         analysis.DataType = DataType.ShortText
@@ -1042,7 +1078,7 @@ Private Sub InitializeDefaultConfig()
         .ExtremeTextWidth = EXTREME_TEXT_WIDTH       ' 极长文本固定宽度
         .LongTextThreshold = LONG_TEXT_THRESHOLD     ' 长文本阈值
         .SmartLineBreak = True                       ' 启用智能断行
-        .MaxWrapLines = MAX_WRAP_LINES               ' 最大换行行数
+        .MaxWrapLines = 3                            ' 最大换行行数（限制为3行）
         .LongTextExtendThreshold = LONG_TEXT_THRESHOLD ' 长文本扩展阈值
     End With
     g_ConfigInitialized = True
@@ -2283,6 +2319,11 @@ Private Sub ApplyWrapAndRowHeight(targetRange As Range, analyses() As ColumnAnal
     
     ' 首先处理列的换行设置
     For i = 1 To UBound(analyses)
+        ' 跳过隐藏列，避免处理异常数据
+        If targetRange.Columns(i).Hidden Then
+            GoTo NextColumn
+        End If
+        
         If analyses(i).NeedWrap Then
             targetRange.Columns(i).WrapText = True
             
@@ -2305,10 +2346,15 @@ Private Sub ApplyWrapAndRowHeight(targetRange As Range, analyses() As ColumnAnal
                 targetRange.Cells(1, i).WrapText = True
                 hasHeaderAdjustment = True
                 
-                ' 计算需要的行高（增强版 - 支持超长文本）
+                ' 计算需要的行高（增强版 - 支持超长文本，增加安全检查）
                 Dim calculatedHeight As Double
-                If Not IsEmpty(analyses(i).HeaderText) Then
+                If Not IsEmpty(analyses(i).HeaderText) And analyses(i).OptimalWidth > 0 Then
                     calculatedHeight = CalculateOptimalRowHeight(analyses(i).HeaderText, analyses(i).OptimalWidth)
+                    
+                    ' 额外安全检查：避免异常高的行高
+                    If calculatedHeight > 100 Then
+                        calculatedHeight = 60 ' 限制为合理高度
+                    End If
                 Else
                     calculatedHeight = analyses(i).HeaderRowHeight
                 End If
@@ -2318,14 +2364,24 @@ Private Sub ApplyWrapAndRowHeight(targetRange As Range, analyses() As ColumnAnal
                 End If
             End If
         End If
+NextColumn:
     Next i
     
     ' 如果有标题需要调整，先设置标题行高（仅在标题行可见时）
     If hasHeaderAdjustment And Not targetRange.Rows(1).Hidden Then
-        ' 限制最大行高避免界面问题
-        If maxHeaderHeight > MAX_ROW_HEIGHT Then
-            maxHeaderHeight = MAX_ROW_HEIGHT
+        ' 严格限制最大行高避免界面问题
+        If maxHeaderHeight > 100 Then
+            maxHeaderHeight = 60  ' 进一步限制为60像素，约3-4行文本
         End If
+        
+        ' 确保最小行高
+        If maxHeaderHeight < MIN_ROW_HEIGHT Then
+            maxHeaderHeight = MIN_ROW_HEIGHT
+        End If
+        
+        ' 调试信息（可选）
+        Debug.Print "设置标题行高: " & maxHeaderHeight & " 像素"
+        
         targetRange.Rows(1).RowHeight = maxHeaderHeight
     End If
     
@@ -3052,28 +3108,51 @@ End Function
 Private Function CalculateOptimalRowHeight(text As String, columnWidth As Double) As Double
     On Error GoTo ErrorHandler
     
+    ' 安全检查
+    If text = "" Or columnWidth <= 0 Then
+        CalculateOptimalRowHeight = MIN_ROW_HEIGHT
+        Exit Function
+    End If
+    
     Dim baseHeight As Double
     baseHeight = MIN_ROW_HEIGHT
     
-    ' 计算文本需要的行数
+    ' 计算文本需要的宽度（字符单位）
     Dim textWidth As Double
     textWidth = CalculateTextWidth(text, 11)
     
+    ' 安全检查：避免除零或异常值
+    If textWidth <= 0 Then
+        CalculateOptimalRowHeight = baseHeight
+        Exit Function
+    End If
+    
+    ' 计算需要的行数（修正：确保单位一致）
     Dim linesNeeded As Long
     linesNeeded = Application.Max(1, Application.Ceiling(textWidth / columnWidth, 1))
     
-    ' 限制最大行数
+    ' 限制最大行数，避免过度换行
     If linesNeeded > g_Config.MaxWrapLines Then
         linesNeeded = g_Config.MaxWrapLines
     End If
     
-    ' 计算总行高（每行18像素 + 1.2倍行距）
-    Dim totalHeight As Double
-    totalHeight = baseHeight + (linesNeeded - 1) * 18 * 1.2
+    ' 对于短文本，限制行数为合理范围
+    If Len(text) <= 50 And linesNeeded > 3 Then
+        linesNeeded = 3
+    End If
     
-    ' 应用行高限制
-    If totalHeight > MAX_ROW_HEIGHT Then
-        totalHeight = MAX_ROW_HEIGHT
+    ' 计算总行高（每行约15像素基础高度 + 合理行距）
+    Dim totalHeight As Double
+    If linesNeeded = 1 Then
+        totalHeight = baseHeight
+    Else
+        ' 多行时：基础行高 + (行数-1) * 行高增量
+        totalHeight = baseHeight + (linesNeeded - 1) * 15
+    End If
+    
+    ' 应用行高限制，避免异常高的行
+    If totalHeight > 100 Then  ' 限制为100像素，约5-6行文本
+        totalHeight = 100
     End If
     
     CalculateOptimalRowHeight = totalHeight
@@ -3207,4 +3286,155 @@ Sub TestExtremeTextHandling()
     
 ErrorHandler:
     MsgBox "测试过程中发生错误: " & Err.Description, vbCritical, "错误"
+End Sub
+
+' =================== 诊断和调试函数（新增） ===================
+
+'--------------------------------------------------
+' 诊断标题行高计算问题
+'--------------------------------------------------
+Sub DiagnoseRowHeightIssue()
+    On Error GoTo ErrorHandler
+    
+    ' 获取当前选择区域
+    Dim selectedRange As Range
+    Set selectedRange = Selection
+    
+    If selectedRange Is Nothing Then
+        MsgBox "请先选择要诊断的区域", vbInformation
+        Exit Sub
+    End If
+    
+    ' 创建诊断报告
+    Dim report As String
+    report = "行高诊断报告" & vbCrLf & vbCrLf
+    report = report & "选择区域: " & selectedRange.Address & vbCrLf
+    report = report & "行数: " & selectedRange.Rows.Count & vbCrLf
+    report = report & "列数: " & selectedRange.Columns.Count & vbCrLf
+    report = report & String(40, "-") & vbCrLf
+    
+    ' 检查配置
+    If Not g_ConfigInitialized Then
+        InitializeDefaultConfig
+    End If
+    
+    report = report & "配置信息:" & vbCrLf
+    report = report & "• 标题优先模式: " & g_Config.HeaderPriority & vbCrLf
+    report = report & "• 智能断行: " & g_Config.SmartLineBreak & vbCrLf
+    report = report & "• 最大列宽: " & g_Config.MaxColumnWidth & vbCrLf
+    report = report & "• 超长文本宽度: " & g_Config.ExtremeTextWidth & vbCrLf
+    report = report & "• 最大换行行数: " & g_Config.MaxWrapLines & vbCrLf & vbCrLf
+    
+    ' 分析第一行（标题行）
+    report = report & "第一行分析:" & vbCrLf
+    Dim col As Long
+    For col = 1 To Application.Min(selectedRange.Columns.Count, 5) ' 只分析前5列
+        Dim cellValue As String
+        cellValue = selectedRange.Cells(1, col).Value
+        
+        If cellValue <> "" Then
+            Dim textWidth As Double
+            textWidth = CalculateTextWidth(cellValue, 11)
+            
+            Dim colWidth As Double
+            colWidth = selectedRange.Columns(col).ColumnWidth
+            
+            Dim calculatedHeight As Double
+            calculatedHeight = CalculateOptimalRowHeight(cellValue, colWidth)
+            
+            Dim textCategory As TextLengthCategory
+            textCategory = ClassifyTextLength(cellValue)
+            
+            report = report & "列" & col & " (" & Left(cellValue, 10) & "...):" & vbCrLf
+            report = report & "  文本长度: " & Len(cellValue) & " 字符" & vbCrLf
+            report = report & "  文本分类: " & textCategory & vbCrLf
+            report = report & "  文本宽度: " & Format(textWidth, "0.0") & " 字符单位" & vbCrLf
+            report = report & "  列宽: " & Format(colWidth, "0.0") & " 字符单位" & vbCrLf
+            report = report & "  计算行高: " & Format(calculatedHeight, "0.0") & " 像素" & vbCrLf
+            report = report & "  是否隐藏: " & selectedRange.Columns(col).Hidden & vbCrLf
+            report = report & vbCrLf
+        End If
+    Next col
+    
+    ' 显示当前行高
+    report = report & "当前第一行行高: " & Format(selectedRange.Rows(1).RowHeight, "0.0") & " 像素" & vbCrLf
+    
+    MsgBox report, vbInformation, "行高诊断报告"
+    
+    Exit Sub
+    
+ErrorHandler:
+    MsgBox "诊断过程中发生错误: " & Err.Description, vbCritical, "错误"
+End Sub
+
+'--------------------------------------------------
+' 重置行高到合理值
+'--------------------------------------------------
+Sub ResetRowHeightToNormal()
+    On Error GoTo ErrorHandler
+    
+    Dim selectedRange As Range
+    Set selectedRange = Selection
+    
+    If selectedRange Is Nothing Then
+        MsgBox "请先选择要重置行高的区域", vbInformation
+        Exit Sub
+    End If
+    
+    ' 重置所有行高为自动
+    selectedRange.Rows.AutoFit
+    
+    ' 确保第一行行高不超过合理范围
+    If selectedRange.Rows(1).RowHeight > 50 Then
+        selectedRange.Rows(1).RowHeight = 30 ' 设为30像素，约2行文本
+    End If
+    
+    MsgBox "行高已重置为合理值", vbInformation
+    
+    Exit Sub
+    
+ErrorHandler:
+    MsgBox "重置过程中发生错误: " & Err.Description, vbCritical, "错误"
+End Sub
+
+'--------------------------------------------------
+' 快速重置整个工作表的行高
+'--------------------------------------------------
+Sub ResetAllRowHeights()
+    On Error GoTo ErrorHandler
+    
+    Dim ws As Worksheet
+    Set ws = ActiveSheet
+    
+    Dim response As VbMsgBoxResult
+    response = MsgBox("确定要将整个工作表的所有行高重置为默认大小吗？" & vbCrLf & _
+                     "这将清除所有手动设置的行高。", vbYesNo + vbQuestion, "重置行高")
+    
+    If response = vbYes Then
+        ' 对整个工作表使用的范围进行重置
+        ws.UsedRange.Rows.AutoFit
+        
+        ' 额外确保没有行高超过50像素
+        Dim i As Long
+        Dim resetCount As Long
+        For i = 1 To ws.UsedRange.Rows.Count
+            If ws.Cells(i, 1).RowHeight > 50 Then
+                ws.Rows(i).RowHeight = 15 ' 设置为正常高度
+                resetCount = resetCount + 1
+            End If
+        Next i
+        
+        If resetCount > 0 Then
+            MsgBox "重置完成：" & vbCrLf & _
+                   "• 所有行高已重置为自动适应" & vbCrLf & _
+                   "• 额外重置了 " & resetCount & " 行异常高度", vbInformation
+        Else
+            MsgBox "重置完成：所有行高已重置为自动适应大小", vbInformation
+        End If
+    End If
+    
+    Exit Sub
+    
+ErrorHandler:
+    MsgBox "重置过程中发生错误: " & Err.Description, vbCritical, "错误"
 End Sub
