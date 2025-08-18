@@ -667,7 +667,7 @@ Private Function AnalyzeColumnEnhanced(dataArray As Variant, columnIndex As Long
     End If
     
     ' 分析标题（如果启用了智能表头检测）
-    If g_Config.SmartHeaderDetection And rowCount > 1 Then
+    If g_Config.SmartHeaderDetection And rowCount > 0 Then
         Dim firstRowValue As Variant
         Dim secondRowValue As Variant
         
@@ -676,21 +676,51 @@ Private Function AnalyzeColumnEnhanced(dataArray As Variant, columnIndex As Long
             If rowCount > 1 Then secondRowValue = dataArray(2, columnIndex)
         End If
         
-        ' 检查是否为标题行
+        ' 检查是否为标题行 - 放宽条件
         If Not IsEmpty(firstRowValue) And firstRowValue <> "" Then
             Dim headerRange As Range
             Set headerRange = columnRange.Cells(1, 1).Resize(1, 1)
             Dim dataRange As Range
             If rowCount > 1 Then Set dataRange = columnRange.Cells(2, 1).Resize(1, 1)
             
-            If IsHeaderRow(headerRange, dataRange) Then
+            ' 更宽松的标题识别：如果第一行包含中文或较长文本，倾向于认为是标题
+            Dim isLikelyHeader As Boolean
+            isLikelyHeader = False
+            
+            ' 条件1：传统的标题检测
+            If Not dataRange Is Nothing And IsHeaderRow(headerRange, dataRange) Then
+                isLikelyHeader = True
+            End If
+            
+            ' 条件2：如果第一行文本较长且包含中文字符，很可能是标题
+            Dim headerText As String
+            headerText = SafeGetCellValue(firstRowValue)
+            If Len(headerText) >= 4 Then ' 长度>=4个字符
+                ' 检查是否包含中文字符
+                Dim i As Integer
+                For i = 1 To Len(headerText)
+                    Dim charCode As Integer
+                    charCode = Asc(Mid(headerText, i, 1))
+                    If charCode > 127 Or charCode < 0 Then ' 中文字符
+                        isLikelyHeader = True
+                        Exit For
+                    End If
+                Next i
+            End If
+            
+            ' 条件3：如果第一行是纯文本且位置在第一行，默认作为标题处理
+            If Not IsNumeric(firstRowValue) And Len(headerText) > 2 Then
+                isLikelyHeader = True
+            End If
+            
+            If isLikelyHeader Then
                 analysis.IsHeaderColumn = True
-                analysis.HeaderText = SafeGetCellValue(firstRowValue)
+                analysis.HeaderText = headerText
                 analysis.HeaderWidth = AnalyzeHeaderWidth(analysis.HeaderText, g_Config.MaxColumnWidth)
                 
                 ' 判断标题是否需要换行
                 Dim headerTextWidth As Double
-                headerTextWidth = CalculateTextWidth(analysis.HeaderText, 11)
+                headerTextWidth = CalculateTextWidth(analysis.HeaderText, 12) ' 使用12号字体计算
                 If headerTextWidth + g_Config.TextBuffer > g_Config.MaxColumnWidth Then
                     analysis.HeaderNeedWrap = True
                     analysis.HeaderRowHeight = CalculateHeaderRowHeight(analysis.HeaderText, g_Config.MaxColumnWidth)
@@ -1908,9 +1938,109 @@ Private Function HasMergedCells(targetRange As Range) As Boolean
 End Function
 
 Private Function IsHeaderRow(row1 As Range, row2 As Range) As Boolean
-    ' 简单的表头检测逻辑
-    ' 实际应用中可能需要更复杂的算法
-    IsHeaderRow = (IsNumeric(row1.Cells(1, 1).Value) = False And IsNumeric(row2.Cells(1, 1).Value) = True)
+    ' 增强的表头检测逻辑 - 特别针对中文标题优化
+    On Error GoTo ErrorHandler
+    
+    If row1 Is Nothing Then
+        IsHeaderRow = False
+        Exit Function
+    End If
+    
+    ' 如果只有一行数据，假设第一行是标题
+    If row2 Is Nothing Then
+        IsHeaderRow = True
+        Exit Function
+    End If
+    
+    Dim score As Integer
+    score = 0
+    
+    ' 检测1：第一行是否主要为文本，第二行是否主要为数字
+    Dim textCount As Integer, numberCount As Integer
+    Dim cell As Range
+    
+    For Each cell In row1.Cells
+        If Not IsEmpty(cell.Value) Then
+            If IsNumeric(cell.Value) Then
+                numberCount = numberCount + 1
+            Else
+                textCount = textCount + 1
+                ' 额外加分：包含中文字符
+                Dim cellText As String
+                cellText = CStr(cell.Value)
+                Dim j As Integer
+                For j = 1 To Len(cellText)
+                    Dim charCode As Integer
+                    charCode = Asc(Mid(cellText, j, 1))
+                    If charCode > 127 Or charCode < 0 Then ' 中文字符
+                        score = score + 1
+                        Exit For
+                    End If
+                Next j
+            End If
+        End If
+    Next cell
+    
+    If textCount > numberCount Then score = score + 2
+    
+    ' 检测2：第一行是否有格式化（加粗等）
+    For Each cell In row1.Cells
+        If cell.Font.Bold Or cell.Interior.ColorIndex <> xlNone Then
+            score = score + 2
+            Exit For
+        End If
+    Next cell
+    
+    ' 检测3：内容长度差异
+    Dim avgLen1 As Double, avgLen2 As Double
+    Dim count1 As Integer, count2 As Integer
+    
+    For Each cell In row1.Cells
+        If Not IsEmpty(cell.Value) Then
+            avgLen1 = avgLen1 + Len(CStr(cell.Value))
+            count1 = count1 + 1
+        End If
+    Next cell
+    
+    For Each cell In row2.Cells
+        If Not IsEmpty(cell.Value) Then
+            avgLen2 = avgLen2 + Len(CStr(cell.Value))
+            count2 = count2 + 1
+        End If
+    Next cell
+    
+    If count1 > 0 Then avgLen1 = avgLen1 / count1
+    If count2 > 0 Then avgLen2 = avgLen2 / count2
+    
+    If avgLen1 > avgLen2 And avgLen1 > 3 Then score = score + 1
+    
+    ' 检测4：特殊关键词检测
+    For Each cell In row1.Cells
+        If Not IsEmpty(cell.Value) Then
+            Dim testText As String
+            testText = CStr(cell.Value)
+            If InStr(testText, "数量") > 0 Or InStr(testText, "金额") > 0 Or _
+               InStr(testText, "时间") > 0 Or InStr(testText, "日期") > 0 Or _
+               InStr(testText, "名称") > 0 Or InStr(testText, "编号") > 0 Or _
+               InStr(testText, "类型") > 0 Or InStr(testText, "状态") > 0 Then
+                score = score + 2
+                Exit For
+            End If
+        End If
+    Next cell
+    
+    ' 检测5：位置因素 - 如果是第一行，增加权重
+    If row1.Row = 1 Then
+        score = score + 1
+    End If
+    
+    ' 降低阈值，特别是对于包含中文的情况
+    ' 得分>=2认为是表头（原来是2，现在保持不变但加分更容易）
+    IsHeaderRow = (score >= 2)
+    Exit Function
+    
+ErrorHandler:
+    IsHeaderRow = True ' 出错时默认假设是标题
 End Function
 
 Private Sub ApplyColumnWidthOptimization(targetRange As Range, analyses() As ColumnAnalysisData)
@@ -1923,17 +2053,122 @@ Private Sub ApplyColumnWidthOptimization(targetRange As Range, analyses() As Col
 End Sub
 
 Private Sub ApplyAlignmentOptimizationWithHeader(targetRange As Range, analyses() As ColumnAnalysisData, hasHeader As Boolean)
-    ' 对齐逻辑
+    ' 智能对齐优化，支持标题居中
+    On Error Resume Next
+    
+    Dim i As Long
+    Dim col As Range
+    
+    For i = 1 To UBound(analyses)
+        Set col = targetRange.Columns(i)
+        
+        ' 如果有表头，设置标题行居中对齐
+        If hasHeader Then
+            col.Cells(1, 1).HorizontalAlignment = xlCenter
+            col.Cells(1, 1).VerticalAlignment = xlCenter
+            
+            ' 为标题行设置轻微的格式增强（可选）
+            If Not col.Cells(1, 1).Font.Bold Then
+                ' 只有在没有加粗的情况下才稍微增强格式
+                col.Cells(1, 1).Font.Size = col.Cells(1, 1).Font.Size + 0.5
+            End If
+        End If
+        
+        ' 根据数据类型设置数据行的对齐方式
+        Dim startRow As Long
+        startRow = IIf(hasHeader, 2, 1)
+        
+        Dim dataRange As Range
+        Set dataRange = col.Cells(startRow, 1).Resize(targetRange.Rows.Count - startRow + 1, 1)
+        
+        Select Case analyses(i).DataType
+            Case IntegerValue, DecimalValue, CurrencyValue, PercentageValue
+                ' 数值类型右对齐
+                dataRange.HorizontalAlignment = xlRight
+                dataRange.VerticalAlignment = xlCenter
+                
+            Case DateValue, TimeValue, DateTimeValue
+                ' 日期时间类型居中对齐
+                dataRange.HorizontalAlignment = xlCenter
+                dataRange.VerticalAlignment = xlCenter
+                
+            Case BooleanValue
+                ' 布尔值居中对齐
+                dataRange.HorizontalAlignment = xlCenter
+                dataRange.VerticalAlignment = xlCenter
+                
+            Case Else
+                ' 文本类型左对齐
+                dataRange.HorizontalAlignment = xlLeft
+                dataRange.VerticalAlignment = xlCenter
+        End Select
+        
+        ' 如果列有标题且标题需要换行，确保标题居中
+        If analyses(i).IsHeaderColumn And analyses(i).HeaderNeedWrap Then
+            col.Cells(1, 1).WrapText = True
+            col.Cells(1, 1).HorizontalAlignment = xlCenter
+            col.Cells(1, 1).VerticalAlignment = xlCenter
+        End If
+    Next i
+    
+    On Error GoTo 0
 End Sub
 
 Private Sub ApplyWrapAndRowHeight(targetRange As Range, analyses() As ColumnAnalysisData)
+    ' 应用换行和行高调整，特别关注标题行
+    On Error Resume Next
+    
     Dim i As Long
+    Dim hasHeaderAdjustment As Boolean
+    Dim maxHeaderHeight As Double
+    hasHeaderAdjustment = False
+    maxHeaderHeight = 15 ' 默认最小行高
+    
+    ' 首先处理列的换行设置
     For i = 1 To UBound(analyses)
         If analyses(i).NeedWrap Then
             targetRange.Columns(i).WrapText = True
         End If
+        
+        ' 检查标题是否需要特殊处理
+        If analyses(i).IsHeaderColumn Then
+            ' 确保标题行启用换行（如果需要）
+            If analyses(i).HeaderNeedWrap Then
+                targetRange.Cells(1, i).WrapText = True
+                hasHeaderAdjustment = True
+                
+                ' 计算需要的行高
+                If analyses(i).HeaderRowHeight > maxHeaderHeight Then
+                    maxHeaderHeight = analyses(i).HeaderRowHeight
+                End If
+            End If
+        End If
     Next i
-    targetRange.EntireRow.AutoFit
+    
+    ' 如果有标题需要调整，先设置标题行高
+    If hasHeaderAdjustment Then
+        targetRange.Rows(1).RowHeight = maxHeaderHeight
+    End If
+    
+    ' 自动调整所有行高（但保护已设置的标题行高）
+    Dim originalFirstRowHeight As Double
+    If hasHeaderAdjustment Then
+        originalFirstRowHeight = targetRange.Rows(1).RowHeight
+    End If
+    
+    ' 对数据行进行自动调整
+    If targetRange.Rows.Count > 1 Then
+        Dim dataRows As Range
+        Set dataRows = targetRange.Rows("2:" & targetRange.Rows.Count)
+        dataRows.AutoFit
+    End If
+    
+    ' 恢复标题行高（如果被自动调整影响了）
+    If hasHeaderAdjustment Then
+        targetRange.Rows(1).RowHeight = originalFirstRowHeight
+    End If
+    
+    On Error GoTo 0
 End Sub
 
 Private Function CalculateTextWidth(Text As String, fontSize As Single) As Double
@@ -2170,3 +2405,71 @@ ErrorHandler:
     ' 可选：记录错误信息用于调试
     Debug.Print "SafeReadRangeToArray 错误: " & Err.Description & " (错误号: " & Err.Number & ")"
 End Function
+
+' =================== 标题居中测试函数 ===================
+
+Sub TestHeaderCentering()
+    ' 测试标题居中功能的专用函数
+    On Error GoTo ErrorHandler
+    
+    ' 创建测试数据
+    Dim ws As Worksheet
+    Set ws = ActiveSheet
+    
+    ' 清空测试区域
+    ws.Range("A1:D10").Clear
+    
+    ' 创建测试数据 - 中文标题
+    ws.Range("A1").Value = "云仓新机数量"
+    ws.Range("B1").Value = "云仓维修及数量"
+    ws.Range("C1").Value = "产品类型"
+    ws.Range("D1").Value = "处理状态"
+    
+    ' 添加一些数据行
+    ws.Range("A2").Value = 100
+    ws.Range("B2").Value = 50
+    ws.Range("C2").Value = "手机"
+    ws.Range("D2").Value = "已完成"
+    
+    ws.Range("A3").Value = 200
+    ws.Range("B3").Value = 75
+    ws.Range("C3").Value = "平板电脑"
+    ws.Range("D3").Value = "处理中"
+    
+    ' 选择测试范围
+    ws.Range("A1:D3").Select
+    
+    ' 应用优化
+    Call OptimizeSelectedLayout
+    
+    ' 检查结果
+    Dim headerRange As Range
+    Set headerRange = ws.Range("A1:D1")
+    
+    Dim resultMsg As String
+    resultMsg = "标题居中测试结果:" & vbCrLf & vbCrLf
+    
+    Dim cell As Range
+    For Each cell In headerRange
+        resultMsg = resultMsg & "'" & cell.Value & "' - 对齐方式: "
+        Select Case cell.HorizontalAlignment
+            Case xlCenter
+                resultMsg = resultMsg & "居中 ✓"
+            Case xlLeft
+                resultMsg = resultMsg & "左对齐 ✗"
+            Case xlRight
+                resultMsg = resultMsg & "右对齐 ✗"
+            Case Else
+                resultMsg = resultMsg & "其他(" & cell.HorizontalAlignment & ") ✗"
+        End Select
+        resultMsg = resultMsg & vbCrLf
+    Next cell
+    
+    resultMsg = resultMsg & vbCrLf & "测试完成！请检查 A1:D3 区域的标题是否已居中显示。"
+    MsgBox resultMsg, vbInformation, "标题居中测试"
+    
+    Exit Sub
+    
+ErrorHandler:
+    MsgBox "测试过程中发生错误: " & Err.Description, vbCritical, "错误"
+End Sub
