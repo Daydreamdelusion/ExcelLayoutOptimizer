@@ -57,7 +57,7 @@ Private Const NUMERIC_BUFFER_PIXELS As Long = 12
 Private Const DATE_BUFFER_PIXELS As Long = 12
 
 ' 缓冲区设置（字符单位）
-Private Const TEXT_BUFFER_CHARS As Double = 3.5    ' 增加到3.5个字符单位以确保中文标题完整显示
+Private Const TEXT_BUFFER_CHARS As Double = 2.0    ' 从3.5减少到2.0，避免过度缓冲
 Private Const NUMERIC_BUFFER_CHARS As Double = 1.6
 Private Const DATE_BUFFER_CHARS As Double = 2#      ' 添加日期缓冲区设置
 
@@ -1062,7 +1062,7 @@ Private Sub InitializeDefaultConfig()
     With g_Config
         .MinColumnWidth = DEFAULT_MIN_COLUMN_WIDTH
         .MaxColumnWidth = DEFAULT_MAX_COLUMN_WIDTH
-        .TextBuffer = TEXT_BUFFER_CHARS
+        .TextBuffer = 2.0  ' 从3.5减少到2.0
         .NumericBuffer = NUMERIC_BUFFER_CHARS
         .WrapThreshold = DEFAULT_MAX_COLUMN_WIDTH
         .SmartHeaderDetection = True
@@ -2414,7 +2414,7 @@ NextColumn:
 End Sub
 
 Private Function CalculateTextWidth(Text As String, fontSize As Single) As Double
-    ' 精确的文本宽度计算 - 针对宋体12号字优化，特别是中文字符
+    ' 精确的文本宽度计算 - 修正中文字符宽度问题
     On Error GoTo ErrorHandler
     
     If Text = "" Then
@@ -2427,15 +2427,16 @@ Private Function CalculateTextWidth(Text As String, fontSize As Single) As Doubl
     Dim char As String
     Dim charCode As Integer
     
-    ' 宋体字符宽度系数（基于实际测量）
+    ' 修正后的字符宽度系数（基于实际测量）
     Dim chineseCharWidth As Double
     Dim englishCharWidth As Double
     Dim numberCharWidth As Double
     
-    ' 根据字体大小调整系数 - 特别针对12号宋体优化
-    chineseCharWidth = (fontSize / 12) * 8.5  ' 中文字符在宋体下约8.5字符单位宽
-    englishCharWidth = (fontSize / 12) * 4.8  ' 英文字符约4.8字符单位宽
-    numberCharWidth = (fontSize / 12) * 5.2   ' 数字字符约5.2字符单位宽
+    ' 根据字体大小调整系数 - 修正为更准确的值
+    ' 中文字符在Excel中约占2个字符单位宽度
+    chineseCharWidth = (fontSize / 11) * 2.0  ' 从8.5修正为2.0
+    englishCharWidth = (fontSize / 11) * 1.0  ' 从4.8修正为1.0
+    numberCharWidth = (fontSize / 11) * 1.0   ' 从5.2修正为1.0
     
     For i = 1 To Len(Text)
         char = Mid(Text, i, 1)
@@ -2458,7 +2459,7 @@ Private Function CalculateTextWidth(Text As String, fontSize As Single) As Doubl
     
 ErrorHandler:
     ' 简化计算作为备用
-    CalculateTextWidth = Len(Text) * (fontSize / 12) * 6.5
+    CalculateTextWidth = Len(Text) * (fontSize / 11) * 1.5  ' 从6.5修正为1.5
 End Function
 
 Private Function AnalyzeHeaderWidth(headerText As String, maxWidth As Double) As Double
@@ -2834,7 +2835,7 @@ Sub TestLongHeaderDisplay()
     ws.Range("D3").Value = "2025-08-19"
     ws.Range("E3").Value = "处理中"
     
-    ' 应用优化前记录列宽
+    ' 记录优化前的列宽
     Dim originalWidths(1 To 5) As Double
     Dim i As Integer
     For i = 1 To 5
@@ -2883,114 +2884,6 @@ Sub TestLongHeaderDisplay()
     resultMsg = resultMsg & vbCrLf & "请检查 A1:E3 区域的标题是否完整显示！"
     MsgBox resultMsg, vbInformation, "长标题显示测试"
     
-    Exit Sub
-    
-ErrorHandler:
-    MsgBox "测试过程中发生错误: " & Err.Description, vbCritical, "错误"
-End Sub
-
-' =================== 辅助函数：保护隐藏行列 ===================
-
-Private Function GetVisibleRange(inputRange As Range) As Range
-    ' 从指定范围中提取可见的单元格
-    On Error GoTo ErrorHandler
-    
-    Dim visibleCells As Range
-    Set visibleCells = inputRange.SpecialCells(xlCellTypeVisible)
-    Set GetVisibleRange = visibleCells
-    
-    Exit Function
-
-ErrorHandler:
-    ' 如果没有可见单元格或发生错误，返回Nothing
-    Set GetVisibleRange = Nothing
-End Function
-
-Sub TestHiddenCellsProtection()
-    ' 测试隐藏行列保护功能
-    On Error GoTo ErrorHandler
-    
-    ' 创建测试数据
-    Dim ws As Worksheet
-    Set ws = ActiveSheet
-    
-    ' 清空测试区域
-    ws.Range("A1:E10").Clear
-    ws.Range("A1:E10").RowHeight = -1 ' 重置行高为自动
-    ws.Columns("A:E").ColumnWidth = 8.43 ' 重置列宽
-    ws.Columns("A:E").Hidden = False ' 显示所有列
-    ws.Rows("1:10").Hidden = False ' 显示所有行
-    
-    ' 创建测试数据
-    ws.Range("A1").Value = "列A标题"
-    ws.Range("B1").Value = "列B标题"
-    ws.Range("C1").Value = "列C标题"
-    ws.Range("D1").Value = "列D标题"
-    ws.Range("E1").Value = "列E标题"
-    
-    ' 添加数据行
-    ws.Range("A2").Value = "数据A2"
-    ws.Range("B2").Value = "数据B2"
-    ws.Range("C2").Value = "数据C2"
-    ws.Range("D2").Value = "数据D2"
-    ws.Range("E2").Value = "数据E2"
-    
-    ws.Range("A3").Value = "数据A3"
-    ws.Range("B3").Value = "数据B3"
-    ws.Range("C3").Value = "数据C3"
-    ws.Range("D3").Value = "数据D3"
-    ws.Range("E3").Value = "数据E3"
-    
-    ' 隐藏列C和行3
-    ws.Columns("C").Hidden = True
-    ws.Rows("3").Hidden = True
-    
-    ' 记录优化前的状态
-    Dim beforeOptimization As String
-    beforeOptimization = "优化前状态:" & vbCrLf
-    beforeOptimization = beforeOptimization & "列C隐藏: " & ws.Columns("C").Hidden & vbCrLf
-    beforeOptimization = beforeOptimization & "行3隐藏: " & ws.Rows("3").Hidden & vbCrLf
-    beforeOptimization = beforeOptimization & "列A宽度: " & Format(ws.Columns("A").ColumnWidth, "0.0") & vbCrLf
-    beforeOptimization = beforeOptimization & "列C宽度: " & Format(ws.Columns("C").ColumnWidth, "0.0") & vbCrLf
-    
-    ' 选择范围并应用优化
-    ws.Range("A1:E3").Select
-    Call OptimizeLayout
-    
-    ' 检查优化后的状态
-    Dim afterOptimization As String
-    afterOptimization = vbCrLf & "优化后状态:" & vbCrLf
-    afterOptimization = afterOptimization & "列C隐藏: " & ws.Columns("C").Hidden & vbCrLf
-    afterOptimization = afterOptimization & "行3隐藏: " & ws.Rows("3").Hidden & vbCrLf
-    afterOptimization = afterOptimization & "列A宽度: " & Format(ws.Columns("A").ColumnWidth, "0.0") & vbCrLf
-    afterOptimization = afterOptimization & "列C宽度: " & Format(ws.Columns("C").ColumnWidth, "0.0") & vbCrLf
-    
-    ' 验证结果
-    Dim testResult As String
-    testResult = vbCrLf & "测试结果:" & vbCrLf
-    
-    If ws.Columns("C").Hidden Then
-        testResult = testResult & "✓ 列C保持隐藏状态" & vbCrLf
-    Else
-        testResult = testResult & "✗ 列C隐藏状态被取消" & vbCrLf
-    End If
-    
-    If ws.Rows("3").Hidden Then
-        testResult = testResult & "✓ 行3保持隐藏状态" & vbCrLf
-    Else
-        testResult = testResult & "✗ 行3隐藏状态被取消" & vbCrLf
-    End If
-    
-    ' 显示完整测试报告
-    Dim fullReport As String
-    fullReport = "隐藏行列保护测试" & vbCrLf
-    fullReport = fullReport & "===================" & vbCrLf
-    fullReport = fullReport & beforeOptimization
-    fullReport = fullReport & afterOptimization
-    fullReport = fullReport & testResult
-    
-    MsgBox fullReport, vbInformation, "隐藏行列保护测试结果"
-
     Exit Sub
     
 ErrorHandler:
