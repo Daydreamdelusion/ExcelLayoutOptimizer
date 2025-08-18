@@ -1,13 +1,14 @@
-# Excel智能布局优化系统 - 技术实现明细 v3.1
+# Excel智能布局优化系统 - 技术实现明细 v3.2
 
 ## 目录
 1. [标题优先功能实现](#1-标题优先功能实现)
-2. [撤销机制实现](#2-撤销机制实现)
-3. [预览功能实现](#3-预览功能实现)
-4. [配置管理实现](#4-配置管理实现)
-5. [智能表头识别](#5-智能表头识别)
-6. [中断机制实现](#6-中断机制实现)
-7. [核心算法优化](#7-核心算法优化)
+2. [隐藏行列保护机制](#2-隐藏行列保护机制)
+3. [撤销机制实现](#3-撤销机制实现)
+4. [预览功能实现](#4-预览功能实现)
+5. [配置管理实现](#5-配置管理实现)
+6. [智能表头识别](#6-智能表头识别)
+7. [中断机制实现](#7-中断机制实现)
+8. [核心算法优化](#8-核心算法优化)
 
 ---
 
@@ -39,15 +40,119 @@ Private Type OptimizationConfig
 End Type
 ```
 
-### 1.2 标题宽度分析算法
+---
 
-#### 1.2.1 标题宽度计算函数
+## 2. 隐藏行列保护机制
+
+### 2.1 设计原则
+**核心理念**：优化布局时绝不影响用户已有的隐藏设置，仅优化可见范围内的内容。
+
+### 2.2 实现策略
+
+#### 2.2.1 列分析阶段保护
 ```vba
-Private Function AnalyzeHeaderWidth(headerText As String, maxWidth As Double) As Double
+Private Function AnalyzeAllColumns(dataArray As Variant, targetRange As Range) As ColumnAnalysisData()
+    For col = 1 To colCount
+        ' 检查列是否隐藏
+        If targetRange.Columns(col).Hidden Then
+            ' 为隐藏列创建默认分析结果，保持原始宽度
+            Dim defaultAnalysis As ColumnAnalysisData
+            defaultAnalysis.OptimalWidth = targetRange.Columns(col).ColumnWidth
+            defaultAnalysis.DataType = EmptyCell
+            analyses(col) = defaultAnalysis
+        Else
+            ' 只分析可见列
+            analyses(col) = AnalyzeColumnEnhanced(dataArray, col, rowCount, targetRange.Columns(col))
+        End If
+    Next col
+End Function
+```
+
+#### 2.2.2 列宽优化阶段保护
+```vba
+Private Sub ApplyColumnWidthOptimization(targetRange As Range, analyses() As ColumnAnalysisData)
+    For i = 1 To UBound(analyses)
+        ' 只处理可见列，跳过隐藏列
+        If Not targetRange.Columns(i).Hidden And Not analyses(i).HasMergedCells Then
+            targetRange.Columns(i).ColumnWidth = analyses(i).OptimalWidth
+        End If
+    Next i
+End Sub
+```
+
+#### 2.2.3 对齐优化阶段保护
+```vba
+Private Sub ApplyAlignmentOptimizationWithHeader(targetRange As Range, analyses() As ColumnAnalysisData, hasHeader As Boolean)
+    For i = 1 To UBound(analyses)
+        Set col = targetRange.Columns(i)
+        
+        ' 只处理可见列
+        If Not col.Hidden Then
+            ' 应用对齐和格式设置...
+            
+            ' 对可见数据行应用对齐
+            Dim visibleDataRange As Range
+            Set visibleDataRange = GetVisibleRange(dataRange)
+            If Not visibleDataRange Is Nothing Then
+                ' 应用对齐设置到可见单元格...
+            End If
+        End If
+    Next i
+End Sub
+```
+
+#### 2.2.4 行高调整阶段保护
+```vba
+Private Sub ApplyWrapAndRowHeight(targetRange As Range, analyses() As ColumnAnalysisData)
+    ' 只对可见行应用AutoFit
+    Dim visibleDataRows As Range
+    Set visibleDataRows = GetVisibleRange(dataRows)
+    
+    If Not visibleDataRows Is Nothing Then
+        visibleDataRows.AutoFit
+    End If
+End Sub
+```
+
+### 2.3 辅助函数
+
+#### 2.3.1 可见范围提取函数
+```vba
+Private Function GetVisibleRange(inputRange As Range) As Range
     On Error GoTo ErrorHandler
     
-    If headerText = "" Then
-        AnalyzeHeaderWidth = 0
+    Dim visibleCells As Range
+    Set visibleCells = inputRange.SpecialCells(xlCellTypeVisible)
+    Set GetVisibleRange = visibleCells
+    
+    Exit Function
+    
+ErrorHandler:
+    Set GetVisibleRange = Nothing
+End Function
+```
+
+### 2.4 保护机制验证
+
+#### 2.4.1 测试用例
+- **TestHiddenCellsProtection()**: 专门的测试函数
+- **验证项目**：
+  - 隐藏列保持隐藏状态
+  - 隐藏行保持隐藏状态  
+  - 可见列正常优化
+  - 可见行正常优化
+
+#### 2.4.2 保护级别
+| 操作类型 | 保护级别 | 实现方式 |
+|---------|---------|----------|
+| 列宽调整 | 完全保护 | Hidden列检查 |
+| 对齐设置 | 完全保护 | SpecialCells(xlCellTypeVisible) |
+| 换行设置 | 完全保护 | 可见范围过滤 |
+| 行高调整 | 完全保护 | AutoFit仅应用于可见行 |
+
+---
+
+## 3. 撤销机制实现
         Exit Function
     End If
     

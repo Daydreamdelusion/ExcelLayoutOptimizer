@@ -1,14 +1,19 @@
 '==================================================
-' Excel智能布局优化系统 v3.1
+' Excel智能布局优化系统 v3.2
 '
 ' 功能：自动优化Excel表格布局，支持撤销、预览和自定义配置
-' 特性：标题优先显示、分块处理、缓存优化、智能识别、错误分级
+' 特性：标题优先显示、分块处理、缓存优化、智能识别、错误分级、隐藏行列保护
 ' 依赖：无外部依赖，仅使用Excel内置VBA功能
 ' 作者：dadada
 ' 创建：2025年
 ' 最后更新：2025年8月18日
 '
 ' 修改日志：
+' 2025-08-18 v3.2 - dadada
+'   - 新增隐藏行列保护机制
+'   - 优化时不会取消用户的隐藏设置
+'   - 仅优化可见范围内的布局
+'   - 新增隐藏行列保护测试用例
 ' 2025-08-18 v3.1 - dadada
 '   - 新增标题优先完整显示功能
 '   - 标题自动换行和行高调整
@@ -1545,7 +1550,21 @@ Private Function AnalyzeAllColumns(dataArray As Variant, targetRange As Range) A
             Exit Function
         End If
         
-        analyses(col) = AnalyzeColumnEnhanced(dataArray, col, rowCount, targetRange.Columns(col))
+        ' 检查列是否隐藏，如果隐藏则跳过分析，但保留默认结构
+        If targetRange.Columns(col).Hidden Then
+            ' 为隐藏列创建一个默认的分析结果，但不进行实际分析
+            Dim defaultAnalysis As ColumnAnalysisData
+            defaultAnalysis.OptimalWidth = targetRange.Columns(col).ColumnWidth ' 保持原始宽度
+            defaultAnalysis.DataType = EmptyCell
+            defaultAnalysis.IsHeaderColumn = False
+            defaultAnalysis.HasMergedCells = False
+            defaultAnalysis.NeedWrap = False
+            defaultAnalysis.HeaderNeedWrap = False
+            analyses(col) = defaultAnalysis
+        Else
+            ' 只分析可见列
+            analyses(col) = AnalyzeColumnEnhanced(dataArray, col, rowCount, targetRange.Columns(col))
+        End If
     Next col
     
     AnalyzeAllColumns = analyses
@@ -1560,7 +1579,8 @@ Private Sub ApplyOptimizationToChunk(chunkRange As Range, columnAnalyses() As Co
     hasHeaderRowAdjustment = False
     
     For col = 1 To UBound(columnAnalyses)
-        If Not columnAnalyses(col).HasMergedCells And columnAnalyses(col).OptimalWidth > 0 Then
+        ' 跳过隐藏列
+        If Not chunkRange.Columns(col).Hidden And Not columnAnalyses(col).HasMergedCells And columnAnalyses(col).OptimalWidth > 0 Then
             ' 只在第一个块时设置列宽
             If chunkRange.Row = chunkRange.Parent.UsedRange.Row Then
                 chunkRange.Columns(col).EntireColumn.ColumnWidth = columnAnalyses(col).OptimalWidth
@@ -2044,16 +2064,18 @@ ErrorHandler:
 End Function
 
 Private Sub ApplyColumnWidthOptimization(targetRange As Range, analyses() As ColumnAnalysisData)
+    ' 优化列宽，但保持隐藏列的隐藏状态
     Dim i As Long
     For i = 1 To UBound(analyses)
-        If Not analyses(i).HasMergedCells Then
+        ' 只处理可见列，跳过隐藏列
+        If Not targetRange.Columns(i).Hidden And Not analyses(i).HasMergedCells Then
             targetRange.Columns(i).ColumnWidth = analyses(i).OptimalWidth
         End If
     Next i
 End Sub
 
 Private Sub ApplyAlignmentOptimizationWithHeader(targetRange As Range, analyses() As ColumnAnalysisData, hasHeader As Boolean)
-    ' 智能对齐优化，支持标题居中
+    ' 智能对齐优化，支持标题居中，但保护隐藏列
     On Error Resume Next
     
     Dim i As Long
@@ -2062,61 +2084,70 @@ Private Sub ApplyAlignmentOptimizationWithHeader(targetRange As Range, analyses(
     For i = 1 To UBound(analyses)
         Set col = targetRange.Columns(i)
         
-        ' 如果有表头，设置标题行居中对齐
-        If hasHeader Then
-            col.Cells(1, 1).HorizontalAlignment = xlCenter
-            col.Cells(1, 1).VerticalAlignment = xlCenter
-            
-            ' 为标题行设置轻微的格式增强（可选）
-            If Not col.Cells(1, 1).Font.Bold Then
-                ' 只有在没有加粗的情况下才稍微增强格式
-                col.Cells(1, 1).Font.Size = col.Cells(1, 1).Font.Size + 0.5
-            End If
-            
-            ' 如果标题较长，确保启用换行并保持居中
-            If analyses(i).IsHeaderColumn And Len(analyses(i).HeaderText) > 8 Then
-                Dim headerWidth As Double
-                headerWidth = CalculateTextWidth(analyses(i).HeaderText, 12)
-                If headerWidth > col.ColumnWidth * 7 Then ' 如果文本宽度超过列宽
-                    col.Cells(1, 1).WrapText = True
+        ' 只处理可见列，跳过隐藏列
+        If Not col.Hidden Then
+            ' 如果有表头，设置标题行居中对齐
+            If hasHeader Then
+                col.Cells(1, 1).HorizontalAlignment = xlCenter
+                col.Cells(1, 1).VerticalAlignment = xlCenter
+                
+                ' 为标题行设置轻微的格式增强（可选）
+                If Not col.Cells(1, 1).Font.Bold Then
+                    ' 只有在没有加粗的情况下才稍微增强格式
+                    col.Cells(1, 1).Font.Size = col.Cells(1, 1).Font.Size + 0.5
+                End If
+                
+                ' 如果标题较长，确保启用换行并保持居中
+                If analyses(i).IsHeaderColumn And Len(analyses(i).HeaderText) > 8 Then
+                    Dim headerWidth As Double
+                    headerWidth = CalculateTextWidth(analyses(i).HeaderText, 12)
+                    If headerWidth > col.ColumnWidth * 7 Then ' 如果文本宽度超过列宽
+                        col.Cells(1, 1).WrapText = True
+                    End If
                 End If
             End If
-        End If
-        
-        ' 根据数据类型设置数据行的对齐方式
-        Dim startRow As Long
-        startRow = IIf(hasHeader, 2, 1)
-        
-        Dim dataRange As Range
-        Set dataRange = col.Cells(startRow, 1).Resize(targetRange.Rows.Count - startRow + 1, 1)
-        
-        Select Case analyses(i).DataType
-            Case IntegerValue, DecimalValue, CurrencyValue, PercentageValue
-                ' 数值类型右对齐
-                dataRange.HorizontalAlignment = xlRight
-                dataRange.VerticalAlignment = xlCenter
-                
-            Case DateValue, TimeValue, DateTimeValue
-                ' 日期时间类型居中对齐
-                dataRange.HorizontalAlignment = xlCenter
-                dataRange.VerticalAlignment = xlCenter
-                
-            Case BooleanValue
-                ' 布尔值居中对齐
-                dataRange.HorizontalAlignment = xlCenter
-                dataRange.VerticalAlignment = xlCenter
-                
-            Case Else
-                ' 文本类型左对齐
-                dataRange.HorizontalAlignment = xlLeft
-                dataRange.VerticalAlignment = xlCenter
-        End Select
-        
-        ' 如果列有标题且标题需要换行，确保标题居中
-        If analyses(i).IsHeaderColumn And analyses(i).HeaderNeedWrap Then
-            col.Cells(1, 1).WrapText = True
-            col.Cells(1, 1).HorizontalAlignment = xlCenter
-            col.Cells(1, 1).VerticalAlignment = xlCenter
+            
+            ' 根据数据类型设置数据行的对齐方式
+            Dim startRow As Long
+            startRow = IIf(hasHeader, 2, 1)
+            
+            Dim dataRange As Range
+            Set dataRange = col.Cells(startRow, 1).Resize(targetRange.Rows.Count - startRow + 1, 1)
+            
+            ' 过滤出可见行进行处理
+            Dim visibleDataRange As Range
+            Set visibleDataRange = GetVisibleRange(dataRange)
+            
+            If Not visibleDataRange Is Nothing Then
+                Select Case analyses(i).DataType
+                    Case IntegerValue, DecimalValue, CurrencyValue, PercentageValue
+                        ' 数值类型右对齐
+                        visibleDataRange.HorizontalAlignment = xlRight
+                        visibleDataRange.VerticalAlignment = xlCenter
+                        
+                    Case DateValue, TimeValue, DateTimeValue
+                        ' 日期时间类型居中对齐
+                        visibleDataRange.HorizontalAlignment = xlCenter
+                        visibleDataRange.VerticalAlignment = xlCenter
+                        
+                    Case BooleanValue
+                        ' 布尔值居中对齐
+                        visibleDataRange.HorizontalAlignment = xlCenter
+                        visibleDataRange.VerticalAlignment = xlCenter
+                        
+                    Case Else
+                        ' 文本类型左对齐
+                        visibleDataRange.HorizontalAlignment = xlLeft
+                        visibleDataRange.VerticalAlignment = xlCenter
+                End Select
+            End If
+            
+            ' 如果列有标题且标题需要换行，确保标题居中
+            If analyses(i).IsHeaderColumn And analyses(i).HeaderNeedWrap Then
+                col.Cells(1, 1).WrapText = True
+                col.Cells(1, 1).HorizontalAlignment = xlCenter
+                col.Cells(1, 1).VerticalAlignment = xlCenter
+            End If
         End If
     Next i
     
@@ -2154,26 +2185,33 @@ Private Sub ApplyWrapAndRowHeight(targetRange As Range, analyses() As ColumnAnal
         End If
     Next i
     
-    ' 如果有标题需要调整，先设置标题行高
-    If hasHeaderAdjustment Then
+    ' 如果有标题需要调整，先设置标题行高（仅在标题行可见时）
+    If hasHeaderAdjustment And Not targetRange.Rows(1).Hidden Then
         targetRange.Rows(1).RowHeight = maxHeaderHeight
     End If
     
-    ' 自动调整所有行高（但保护已设置的标题行高）
+    ' 自动调整所有可见行的行高（但保护已设置的标题行高）
     Dim originalFirstRowHeight As Double
-    If hasHeaderAdjustment Then
+    If hasHeaderAdjustment And Not targetRange.Rows(1).Hidden Then
         originalFirstRowHeight = targetRange.Rows(1).RowHeight
     End If
     
-    ' 对数据行进行自动调整
+    ' 对可见的数据行进行自动调整
     If targetRange.Rows.Count > 1 Then
         Dim dataRows As Range
         Set dataRows = targetRange.Rows("2:" & targetRange.Rows.Count)
-        dataRows.AutoFit
+        
+        ' 只对可见行应用AutoFit
+        Dim visibleDataRows As Range
+        Set visibleDataRows = GetVisibleRange(dataRows)
+        
+        If Not visibleDataRows Is Nothing Then
+            visibleDataRows.AutoFit
+        End If
     End If
     
     ' 恢复标题行高（如果被自动调整影响了）
-    If hasHeaderAdjustment Then
+    If hasHeaderAdjustment And Not targetRange.Rows(1).Hidden Then
         targetRange.Rows(1).RowHeight = originalFirstRowHeight
     End If
     
@@ -2608,6 +2646,114 @@ Sub TestLongHeaderDisplay()
     
     resultMsg = resultMsg & vbCrLf & "请检查 A1:E3 区域的标题是否完整显示！"
     MsgBox resultMsg, vbInformation, "长标题显示测试"
+    
+    Exit Sub
+    
+ErrorHandler:
+    MsgBox "测试过程中发生错误: " & Err.Description, vbCritical, "错误"
+End Sub
+
+' =================== 辅助函数：保护隐藏行列 ===================
+
+Private Function GetVisibleRange(inputRange As Range) As Range
+    ' 从指定范围中提取可见的单元格
+    On Error GoTo ErrorHandler
+    
+    Dim visibleCells As Range
+    Set visibleCells = inputRange.SpecialCells(xlCellTypeVisible)
+    Set GetVisibleRange = visibleCells
+    
+    Exit Function
+    
+ErrorHandler:
+    ' 如果没有可见单元格或发生错误，返回Nothing
+    Set GetVisibleRange = Nothing
+End Function
+
+Sub TestHiddenCellsProtection()
+    ' 测试隐藏行列保护功能
+    On Error GoTo ErrorHandler
+    
+    ' 创建测试数据
+    Dim ws As Worksheet
+    Set ws = ActiveSheet
+    
+    ' 清空测试区域
+    ws.Range("A1:E10").Clear
+    ws.Range("A1:E10").RowHeight = -1 ' 重置行高为自动
+    ws.Columns("A:E").ColumnWidth = 8.43 ' 重置列宽
+    ws.Columns("A:E").Hidden = False ' 显示所有列
+    ws.Rows("1:10").Hidden = False ' 显示所有行
+    
+    ' 创建测试数据
+    ws.Range("A1").Value = "列A标题"
+    ws.Range("B1").Value = "列B标题"
+    ws.Range("C1").Value = "列C标题"
+    ws.Range("D1").Value = "列D标题"
+    ws.Range("E1").Value = "列E标题"
+    
+    ' 添加数据行
+    ws.Range("A2").Value = "数据A2"
+    ws.Range("B2").Value = "数据B2"
+    ws.Range("C2").Value = "数据C2"
+    ws.Range("D2").Value = "数据D2"
+    ws.Range("E2").Value = "数据E2"
+    
+    ws.Range("A3").Value = "数据A3"
+    ws.Range("B3").Value = "数据B3"
+    ws.Range("C3").Value = "数据C3"
+    ws.Range("D3").Value = "数据D3"
+    ws.Range("E3").Value = "数据E3"
+    
+    ' 隐藏列C和行3
+    ws.Columns("C").Hidden = True
+    ws.Rows("3").Hidden = True
+    
+    ' 记录优化前的状态
+    Dim beforeOptimization As String
+    beforeOptimization = "优化前状态:" & vbCrLf
+    beforeOptimization = beforeOptimization & "列C隐藏: " & ws.Columns("C").Hidden & vbCrLf
+    beforeOptimization = beforeOptimization & "行3隐藏: " & ws.Rows("3").Hidden & vbCrLf
+    beforeOptimization = beforeOptimization & "列A宽度: " & Format(ws.Columns("A").ColumnWidth, "0.0") & vbCrLf
+    beforeOptimization = beforeOptimization & "列C宽度: " & Format(ws.Columns("C").ColumnWidth, "0.0") & vbCrLf
+    
+    ' 选择范围并应用优化
+    ws.Range("A1:E3").Select
+    Call OptimizeLayout
+    
+    ' 检查优化后的状态
+    Dim afterOptimization As String
+    afterOptimization = vbCrLf & "优化后状态:" & vbCrLf
+    afterOptimization = afterOptimization & "列C隐藏: " & ws.Columns("C").Hidden & vbCrLf
+    afterOptimization = afterOptimization & "行3隐藏: " & ws.Rows("3").Hidden & vbCrLf
+    afterOptimization = afterOptimization & "列A宽度: " & Format(ws.Columns("A").ColumnWidth, "0.0") & vbCrLf
+    afterOptimization = afterOptimization & "列C宽度: " & Format(ws.Columns("C").ColumnWidth, "0.0") & vbCrLf
+    
+    ' 验证结果
+    Dim testResult As String
+    testResult = vbCrLf & "测试结果:" & vbCrLf
+    
+    If ws.Columns("C").Hidden Then
+        testResult = testResult & "✓ 列C保持隐藏状态" & vbCrLf
+    Else
+        testResult = testResult & "✗ 列C隐藏状态被取消" & vbCrLf
+    End If
+    
+    If ws.Rows("3").Hidden Then
+        testResult = testResult & "✓ 行3保持隐藏状态" & vbCrLf
+    Else
+        testResult = testResult & "✗ 行3隐藏状态被取消" & vbCrLf
+    End If
+    
+    ' 显示完整测试报告
+    Dim fullReport As String
+    fullReport = "隐藏行列保护测试" & vbCrLf
+    fullReport = fullReport & "===================" & vbCrLf
+    fullReport = fullReport & beforeOptimization
+    fullReport = fullReport & afterOptimization
+    fullReport = fullReport & testResult
+    
+    MsgBox fullReport, vbInformation, "隐藏行列保护测试结果"
     
     Exit Sub
     
