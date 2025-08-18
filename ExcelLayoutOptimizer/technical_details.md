@@ -1,16 +1,221 @@
-# Excel智能布局优化系统 - 技术实现明细 v3.0
+# Excel智能布局优化系统 - 技术实现明细 v3.1
 
 ## 目录
-1. [撤销机制实现](#1-撤销机制实现)
-2. [预览功能实现](#2-预览功能实现)
-3. [配置管理实现](#3-配置管理实现)
-4. [智能表头识别](#4-智能表头识别)
-5. [中断机制实现](#5-中断机制实现)
-6. [核心算法优化](#6-核心算法优化)
+1. [标题优先功能实现](#1-标题优先功能实现)
+2. [撤销机制实现](#2-撤销机制实现)
+3. [预览功能实现](#3-预览功能实现)
+4. [配置管理实现](#4-配置管理实现)
+5. [智能表头识别](#5-智能表头识别)
+6. [中断机制实现](#6-中断机制实现)
+7. [核心算法优化](#7-核心算法优化)
 
 ---
 
-## 1. 撤销机制实现
+## 1. 标题优先功能实现
+
+### 1.1 核心数据结构扩展
+
+#### 1.1.1 列分析数据结构增强
+```vba
+Private Type ColumnAnalysisData
+    ' 原有字段...
+    ' 标题相关新增字段
+    HeaderText As String        ' 标题文本内容
+    HeaderWidth As Double       ' 标题需要的宽度
+    HeaderNeedWrap As Boolean   ' 标题是否需要换行
+    HeaderRowHeight As Double   ' 标题行高
+    IsHeaderColumn As Boolean   ' 是否为标题列
+End Type
+```
+
+#### 1.1.2 配置参数结构扩展
+```vba
+Private Type OptimizationConfig
+    ' 原有字段...
+    ' 标题相关新增配置
+    HeaderPriority As Boolean     ' 标题优先模式
+    HeaderMaxWrapLines As Long    ' 标题最大换行数
+    HeaderMinHeight As Double     ' 标题最小行高
+End Type
+```
+
+### 1.2 标题宽度分析算法
+
+#### 1.2.1 标题宽度计算函数
+```vba
+Private Function AnalyzeHeaderWidth(headerText As String, maxWidth As Double) As Double
+    On Error GoTo ErrorHandler
+    
+    If headerText = "" Then
+        AnalyzeHeaderWidth = 0
+        Exit Function
+    End If
+    
+    ' 计算标题的基本宽度（包含缓冲）
+    Dim baseWidth As Double
+    baseWidth = CalculateTextWidth(headerText, 11) + g_Config.TextBuffer
+    
+    ' 如果标题宽度在限制范围内，直接返回
+    If baseWidth <= maxWidth Then
+        AnalyzeHeaderWidth = baseWidth
+    Else
+        ' 标题需要换行，返回最大宽度
+        AnalyzeHeaderWidth = maxWidth
+    End If
+    
+    Exit Function
+    
+ErrorHandler:
+    AnalyzeHeaderWidth = g_Config.MinColumnWidth
+End Function
+```
+
+#### 1.2.2 标题行高计算逻辑
+```vba
+Private Function CalculateHeaderRowHeight(headerText As String, columnWidth As Double) As Double
+    On Error GoTo ErrorHandler
+    
+    ' 计算需要的行数
+    Dim textWidth As Double
+    textWidth = CalculateTextWidth(headerText, 11)
+    
+    Dim linesNeeded As Long
+    linesNeeded = Application.Max(1, Application.Ceiling(textWidth / columnWidth, 1))
+    
+    ' 限制最大行数避免过度换行
+    If linesNeeded > g_Config.HeaderMaxWrapLines Then
+        linesNeeded = g_Config.HeaderMaxWrapLines
+    End If
+    
+    ' 计算行高（每行约18像素包含间距）
+    CalculateHeaderRowHeight = Application.Max(g_Config.HeaderMinHeight, linesNeeded * 18)
+    
+    Exit Function
+    
+ErrorHandler:
+    CalculateHeaderRowHeight = g_Config.HeaderMinHeight
+End Function
+```
+
+### 1.3 标题优先的列宽决策算法
+
+#### 1.3.1 综合宽度计算函数
+```vba
+Private Function CalculateOptimalWidthWithHeader(analysis As ColumnAnalysisData) As widthResult
+    Dim result As widthResult
+    On Error GoTo ErrorHandler
+    
+    ' 如果不是标题列或没有启用标题优先，使用原有逻辑
+    If Not analysis.IsHeaderColumn Or Not g_Config.HeaderPriority Then
+        result = CalculateOptimalWidthEnhanced(analysis.MaxContentWidth, analysis.dataType)
+        CalculateOptimalWidthWithHeader = result
+        Exit Function
+    End If
+    
+    ' 标题优先模式：标题宽度 vs 数据宽度
+    Dim headerRequiredWidth As Double
+    Dim dataOptimalWidth As Double
+    
+    ' 计算标题需要的宽度
+    headerRequiredWidth = AnalyzeHeaderWidth(analysis.HeaderText, g_Config.MaxColumnWidth)
+    
+    ' 计算数据内容的最优宽度
+    dataOptimalWidth = analysis.MaxContentWidth + g_Config.TextBuffer
+    If dataOptimalWidth < g_Config.MinColumnWidth Then
+        dataOptimalWidth = g_Config.MinColumnWidth
+    End If
+    
+    ' 取两者中的较大值作为最终宽度
+    result.FinalWidth = Application.Max(headerRequiredWidth, dataOptimalWidth)
+    
+    ' 检查是否需要换行
+    Dim headerTextWidth As Double
+    headerTextWidth = CalculateTextWidth(analysis.HeaderText, 11)
+    
+    If headerTextWidth + g_Config.TextBuffer > g_Config.MaxColumnWidth Then
+        result.NeedWrap = True
+        result.FinalWidth = g_Config.MaxColumnWidth
+    Else
+        result.NeedWrap = False
+    End If
+    
+    ' 应用最终的边界控制
+    If result.FinalWidth > g_Config.MaxColumnWidth Then
+        result.FinalWidth = g_Config.MaxColumnWidth
+        result.NeedWrap = True
+    ElseIf result.FinalWidth < g_Config.MinColumnWidth Then
+        result.FinalWidth = g_Config.MinColumnWidth
+    End If
+    
+    result.OriginalWidth = analysis.MaxContentWidth
+    CalculateOptimalWidthWithHeader = result
+    
+    Exit Function
+    
+ErrorHandler:
+    ' 错误情况下返回安全值
+    result.FinalWidth = g_Config.MinColumnWidth
+    result.NeedWrap = False
+    result.OriginalWidth = 0
+    CalculateOptimalWidthWithHeader = result
+End Function
+```
+
+### 1.4 应用优化时的标题处理
+
+#### 1.4.1 增强的应用优化函数
+```vba
+Private Sub ApplyOptimizationToChunk(chunkRange As Range, columnAnalyses() As ColumnAnalysisData)
+    Dim col As Long
+    Dim hasHeaderRowAdjustment As Boolean
+    hasHeaderRowAdjustment = False
+    
+    ' 首先应用列宽和基本格式
+    For col = 1 To UBound(columnAnalyses)
+        If Not columnAnalyses(col).HasMergedCells And columnAnalyses(col).OptimalWidth > 0 Then
+            ' 只在第一个块时设置列宽
+            If chunkRange.row = chunkRange.Parent.UsedRange.row Then
+                chunkRange.Columns(col).EntireColumn.ColumnWidth = columnAnalyses(col).OptimalWidth
+            End If
+            
+            ' 设置换行
+            If columnAnalyses(col).NeedWrap Then
+                chunkRange.Columns(col).WrapText = True
+            End If
+            
+            ' 处理标题换行
+            If columnAnalyses(col).IsHeaderColumn And columnAnalyses(col).HeaderNeedWrap Then
+                If chunkRange.row = chunkRange.Parent.UsedRange.row Then
+                    chunkRange.Columns(col).Cells(1, 1).WrapText = True
+                    hasHeaderRowAdjustment = True
+                End If
+            End If
+        End If
+    Next col
+    
+    ' 统一调整标题行高
+    If hasHeaderRowAdjustment And chunkRange.row = chunkRange.Parent.UsedRange.row Then
+        Dim maxHeaderHeight As Double
+        maxHeaderHeight = g_Config.HeaderMinHeight
+        
+        ' 找出需要的最大行高
+        For col = 1 To UBound(columnAnalyses)
+            If columnAnalyses(col).IsHeaderColumn And columnAnalyses(col).HeaderNeedWrap Then
+                If columnAnalyses(col).HeaderRowHeight > maxHeaderHeight Then
+                    maxHeaderHeight = columnAnalyses(col).HeaderRowHeight
+                End If
+            End If
+        Next col
+        
+        ' 设置第一行行高
+        chunkRange.Rows(1).RowHeight = maxHeaderHeight
+    End If
+End Sub
+```
+
+---
+
+## 2. 撤销机制实现
 
 ### 1.1 状态保存策略
 
