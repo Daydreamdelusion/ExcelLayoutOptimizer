@@ -478,6 +478,46 @@ ErrorHandler:
     MsgBox "撤销失败：" & Err.Description, vbCritical, "Excel布局优化系统"
 End Sub
 
+'--------------------------------------------------
+' 保存状态用于撤销
+'--------------------------------------------------
+Private Function SaveStateForUndo(targetRange As Range) As Boolean
+    On Error GoTo ErrorHandler
+    
+    ' 初始化撤销信息
+    With g_LastUndoInfo
+        .RangeAddress = targetRange.Address
+        .WorksheetName = targetRange.Worksheet.Name
+        .Timestamp = Now
+        .Description = "布局优化操作"
+        
+        ' 保存列格式信息
+        ReDim .ColumnFormats(1 To targetRange.Columns.Count)
+        Dim i As Long
+        For i = 1 To targetRange.Columns.Count
+            With .ColumnFormats(i)
+                .ColumnWidth = targetRange.Columns(i).ColumnWidth
+                .WrapText = targetRange.Columns(i).WrapText
+                .HorizontalAlignment = targetRange.Columns(i).HorizontalAlignment
+                .VerticalAlignment = targetRange.Columns(i).VerticalAlignment
+            End With
+        Next i
+        
+        ' 保存行高信息
+        ReDim .RowHeights(1 To targetRange.Rows.Count)
+        For i = 1 To targetRange.Rows.Count
+            .RowHeights(i) = targetRange.Rows(i).RowHeight
+        Next i
+    End With
+    
+    g_HasUndoInfo = True
+    SaveStateForUndo = True
+    Exit Function
+    
+ErrorHandler:
+    SaveStateForUndo = False
+End Function
+
 '==================================================
 ' 分块处理实现
 '==================================================
@@ -689,6 +729,99 @@ Private Function GetCachedWidth(content As String) As Double
     
     GetCachedWidth = width
 End Function
+
+'--------------------------------------------------
+' 中断机制
+'--------------------------------------------------
+Private Sub ResetCancelFlag()
+    g_CancelOperation = False
+    g_CheckCounter = 0
+    Application.EnableCancelKey = xlErrorHandler
+End Sub
+
+Private Function CheckForCancel() As Boolean
+    ' 每100次调用检测一次
+    g_CheckCounter = g_CheckCounter + 1
+    If g_CheckCounter Mod 100 <> 0 Then
+        CheckForCancel = False
+        Exit Function
+    End If
+    
+    ' 处理挂起的事件
+    DoEvents
+    
+    ' 检测ESC键或用户中断
+    If g_CancelOperation Then
+        If MsgBox("确定要取消当前操作吗？", vbYesNo + vbQuestion, "中断确认") = vbYes Then
+            CheckForCancel = True
+        Else
+            g_CancelOperation = False
+            CheckForCancel = False
+        End If
+    Else
+        CheckForCancel = False
+    End If
+End Function
+
+Private Sub HandleProcessingError()
+    If Err.Number = 18 Then ' 用户中断 (ESC键)
+        g_CancelOperation = True
+        Resume Next
+    End If
+End Sub
+
+'--------------------------------------------------
+' 计时器工具函数
+'--------------------------------------------------
+Private Function StartTimer() As Long
+    StartTimer = GetTickCount()
+End Function
+
+Private Function ElapsedTime(startTime As Long) As Double
+    ElapsedTime = (GetTickCount() - startTime) / 1000#
+End Function
+
+'--------------------------------------------------
+' 安全读取范围数据
+'--------------------------------------------------
+Private Function SafeReadRangeToArray(targetRange As Range) As Variant
+    On Error GoTo ErrorHandler
+    
+    ' 检查范围有效性
+    If targetRange Is Nothing Then
+        SafeReadRangeToArray = Empty
+        Exit Function
+    End If
+    
+    ' 对于单个单元格，直接返回值
+    If targetRange.Cells.Count = 1 Then
+        SafeReadRangeToArray = Array(targetRange.Value)
+        Exit Function
+    End If
+    
+    ' 对于多个单元格，返回数组
+    SafeReadRangeToArray = targetRange.Value
+    Exit Function
+    
+ErrorHandler:
+    ' 出错时返回空值
+    SafeReadRangeToArray = Empty
+End Function
+
+'--------------------------------------------------
+' 显示进度
+'--------------------------------------------------
+Private Sub ShowProgress(current As Long, total As Long, message As String)
+    On Error Resume Next
+    
+    If total > 0 Then
+        Dim percent As Double
+        percent = (current / total) * 100
+        Application.StatusBar = message & " " & Format(percent, "0") & "%"
+    Else
+        Application.StatusBar = message
+    End If
+End Sub
 
 '==================================================
 ' 增强的数据分析
@@ -1153,6 +1286,125 @@ Private Sub LoadConfigFromWorkbook()
         End If
     End If
 End Sub
+
+'==================================================
+' 用户交互函数
+'==================================================
+
+'--------------------------------------------------
+' 获取用户配置
+'--------------------------------------------------
+Private Function GetUserConfiguration() As Boolean
+    On Error GoTo ErrorHandler
+    
+    Dim response As String
+    
+    ' 简单配置模式（3个关键参数）
+    response = InputBox( _
+        "设置最大列宽（字符单位）" & vbCrLf & _
+        "范围：30-150，当前：" & g_Config.MaxColumnWidth & vbCrLf & vbCrLf & _
+        "直接按确定使用默认值，按取消退出", _
+        "列宽配置", CStr(g_Config.MaxColumnWidth))
+    
+    If response = "" Then
+        ' 用户按取消，返回False
+        GetUserConfiguration = False
+        Exit Function
+    End If
+    
+    ' 验证输入
+    If IsNumeric(response) Then
+        Dim value As Double
+        value = CDbl(response)
+        If value >= 30 And value <= 150 Then
+            g_Config.MaxColumnWidth = value
+        End If
+    End If
+    
+    GetUserConfiguration = True
+    Exit Function
+    
+ErrorHandler:
+    GetUserConfiguration = False
+End Function
+
+'--------------------------------------------------
+' 收集预览信息
+'--------------------------------------------------
+Private Function CollectPreviewInfo(targetRange As Range) As PreviewInfo
+    Dim info As PreviewInfo
+    On Error GoTo ErrorHandler
+    
+    With info
+        .TotalColumns = targetRange.Columns.Count
+        .AffectedCells = targetRange.Cells.Count
+        .ColumnsToAdjust = .TotalColumns ' 简化：假设所有列都会调整
+        .ColumnsNeedWrap = 0
+        .MinWidth = g_Config.MinColumnWidth
+        .MaxWidth = g_Config.MaxColumnWidth
+        .HasMergedCells = (targetRange.MergeCells <> False)
+        .HasFormulas = False
+        
+        ' 检查是否包含公式
+        Dim cell As Range
+        For Each cell In targetRange.Cells
+            If Left(CStr(cell.Formula), 1) = "=" Then
+                .HasFormulas = True
+                Exit For
+            End If
+        Next cell
+        
+        ' 估算处理时间（基于单元格数量）
+        .EstimatedTime = .AffectedCells / 10000
+        If .EstimatedTime < 0.5 Then .EstimatedTime = 0.5
+        If .EstimatedTime > 30 Then .EstimatedTime = 30
+    End With
+    
+    CollectPreviewInfo = info
+    Exit Function
+    
+ErrorHandler:
+    ' 返回默认值
+    With info
+        .TotalColumns = 1
+        .EstimatedTime = 1
+    End With
+    CollectPreviewInfo = info
+End Function
+
+'--------------------------------------------------
+' 显示预览对话框
+'--------------------------------------------------
+Private Function ShowPreviewDialog(info As PreviewInfo, targetRange As Range) As VbMsgBoxResult
+    Dim message As String
+    
+    message = "布局优化预览" & vbCrLf & vbCrLf
+    message = message & "优化区域: " & targetRange.Address & vbCrLf
+    message = message & String(40, "-") & vbCrLf
+    message = message & "• 总列数: " & info.TotalColumns & vbCrLf
+    message = message & "• 需调整: " & info.ColumnsToAdjust & " 列" & vbCrLf
+    
+    If info.ColumnsNeedWrap > 0 Then
+        message = message & "• 需换行: " & info.ColumnsNeedWrap & " 列" & vbCrLf
+    End If
+    
+    message = message & "• 宽度范围: " & Format(info.MinWidth, "0.0") & _
+              " - " & Format(info.MaxWidth, "0.0") & vbCrLf
+    
+    If info.HasMergedCells Then
+        message = message & "• 警告: 包含合并单元格（将跳过）" & vbCrLf
+    End If
+    
+    If info.HasFormulas Then
+        message = message & "• 提示: 包含公式" & vbCrLf
+    End If
+    
+    message = message & String(40, "-") & vbCrLf
+    message = message & "预计耗时: " & Format(info.EstimatedTime, "0.0") & " 秒" & vbCrLf & vbCrLf
+    message = message & "是否继续？（处理中可按ESC中断）"
+    
+    ShowPreviewDialog = MsgBox(message, vbYesNoCancel + vbInformation, "Excel布局优化")
+End Function
 
 '==================================================
 ' 验证增强
@@ -1664,6 +1916,48 @@ TestFailed:
     TestSafeReadRangeToArray = False
 End Function
 
+'==================================================
+' 核心优化应用函数
+'==================================================
+
+'--------------------------------------------------
+' 应用优化到分块
+'--------------------------------------------------
+Private Sub ApplyOptimizationToChunk(chunkRange As Range, columnAnalyses() As ColumnAnalysisData)
+    On Error Resume Next
+    
+    ' 应用列宽优化
+    ApplyColumnWidthOptimization chunkRange, columnAnalyses
+    
+    ' 应用对齐优化
+    ApplyAlignmentOptimizationWithHeader chunkRange, columnAnalyses, True
+    
+    ' 应用换行和行高优化
+    ApplyWrapAndRowHeight chunkRange, columnAnalyses
+End Sub
+
+'--------------------------------------------------
+' 应用列宽优化（保护隐藏列）
+'--------------------------------------------------
+Private Sub ApplyColumnWidthOptimization(targetRange As Range, analyses() As ColumnAnalysisData)
+    On Error Resume Next
+    
+    Dim i As Long
+    Dim col As Range
+    
+    For i = 1 To UBound(analyses)
+        Set col = targetRange.Columns(i)
+        
+        ' 检查列是否隐藏，跳过隐藏列
+        If Not col.Hidden Then
+            ' 应用列宽（仅当有有效宽度时）
+            If analyses(i).OptimalWidth > 0 Then
+                col.ColumnWidth = analyses(i).OptimalWidth
+            End If
+        End If
+    Next i
+End Sub
+
 '--------------------------------------------------
 ' 应用对齐优化（改进版，优化日期对齐）
 '--------------------------------------------------
@@ -1940,6 +2234,89 @@ Private Function AnalyzeHeaderWidth(headerText As String, maxWidth As Double) As
     
 ErrorHandler:
     AnalyzeHeaderWidth = g_Config.MinColumnWidth
+End Function
+
+'--------------------------------------------------
+' 智能表头识别
+'--------------------------------------------------
+Private Function IsHeaderRow(firstRow As Range, secondRow As Range) As Boolean
+    Dim score As Integer
+    score = 0
+    
+    On Error GoTo ErrorHandler
+    
+    ' 检测标准1：第一行全是文本
+    Dim allText As Boolean
+    allText = True
+    Dim cell As Range
+    For Each cell In firstRow.Cells
+        If Not IsEmpty(cell.Value) And IsNumeric(cell.Value) Then
+            allText = False
+            Exit For
+        End If
+    Next cell
+    If allText Then score = score + 2
+    
+    ' 检测标准2：第一行无空单元格
+    Dim noEmpty As Boolean
+    noEmpty = True
+    For Each cell In firstRow.Cells
+        If IsEmpty(cell.Value) Then
+            noEmpty = False
+            Exit For
+        End If
+    Next cell
+    If noEmpty Then score = score + 2
+    
+    ' 检测标准3：格式特征（加粗或背景色）
+    Dim hasFormat As Boolean
+    hasFormat = False
+    For Each cell In firstRow.Cells
+        If cell.Font.Bold Or cell.Interior.ColorIndex <> xlNone Then
+            hasFormat = True
+            Exit For
+        End If
+    Next cell
+    If hasFormat Then score = score + 3
+    
+    ' 检测标准4：与第二行数据类型差异
+    If Not secondRow Is Nothing Then
+        Dim typeDiff As Integer
+        typeDiff = 0
+        Dim i As Long
+        For i = 1 To Application.Min(firstRow.Cells.Count, secondRow.Cells.Count)
+            Dim firstType As Boolean
+            Dim secondType As Boolean
+            firstType = IsNumeric(firstRow.Cells(i).Value)
+            secondType = IsNumeric(secondRow.Cells(i).Value)
+            If firstType <> secondType Then typeDiff = typeDiff + 1
+        Next i
+        If typeDiff > firstRow.Cells.Count / 2 Then score = score + 2
+    End If
+    
+    ' 检测标准5：文本长度
+    Dim avgLength As Double
+    Dim totalLength As Long
+    Dim textCount As Long
+    totalLength = 0
+    textCount = 0
+    For Each cell In firstRow.Cells
+        If Not IsEmpty(cell.Value) Then
+            totalLength = totalLength + Len(CStr(cell.Value))
+            textCount = textCount + 1
+        End If
+    Next cell
+    If textCount > 0 Then
+        avgLength = totalLength / textCount
+        If avgLength < 20 Then score = score + 1
+    End If
+    
+    ' 得分>=4认为是表头
+    IsHeaderRow = (score >= 4)
+    Exit Function
+    
+ErrorHandler:
+    IsHeaderRow = False
 End Function
 
 '--------------------------------------------------
