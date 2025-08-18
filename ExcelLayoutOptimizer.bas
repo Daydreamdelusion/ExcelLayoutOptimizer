@@ -1,29 +1,26 @@
 Attribute VB_Name = "ExcelLayoutOptimizer"
 '==================================================
-' Excel智能布局优化系统
+' Excel智能布局优化系统 v3.0
 ' 
 ' 功能：自动优化Excel表格布局，支持撤销、预览和自定义配置
-' 开发：VBA专用，单模块解决方案
+' 特性：分块处理、缓存优化、智能识别、错误分级
 ' 依赖：无外部依赖，仅使用Excel内置VBA功能
 ' 作者：dadada
 ' 创建：2025年
 ' 最后更新：2025年8月16日
 '
 ' 修改日志：
+' 2025-08-16 v3.0 - dadada
+'   - 增加分块处理和缓存机制
+'   - 完善数据类型智能识别
+'   - 实现分级错误处理
+'   - 增加配置持久化
+'   - 添加测试套件
 ' 2025-08-16 v2.1 - dadada
-'   - 重构代码以彻底解决“行继续标志太多”的编译错误。
-'   - 将所有多行 MsgBox 和 InputBox 的字符串拼接重构为变量赋值，提高代码可读性和稳定性。
-' 2025-08-16 v2.0 - dadada
-'   - 添加撤销机制支持
-'   - 添加预览功能
-'   - 添加配置管理
-'   - 添加智能表头识别
-'   - 添加中断机制
-'   - 修复PreviewInfo类型定义缺失
-'   - 修复配置管理全局变量缺失
-'   - 修复API声明兼容性问题
+'   - 重构代码解决编译错误
+'   - 添加撤销、预览、配置功能
 ' 2025-08-09 v1.0 - dadada
-'   - 初始版本，核心优化功能
+'   - 初始版本
 '==================================================
 
 Option Explicit
@@ -32,54 +29,73 @@ Option Explicit
 ' 配置常量区
 '--------------------------------------------------
 ' 列宽边界控制（字符单位）
-Private Const DEFAULT_MIN_COLUMN_WIDTH As Double = 8.43     ' 默认最小列宽
-Private Const DEFAULT_MAX_COLUMN_WIDTH As Double = 50       ' 默认最大列宽
+Private Const DEFAULT_MIN_COLUMN_WIDTH As Double = 8.43
+Private Const DEFAULT_MAX_COLUMN_WIDTH As Double = 50
 
 ' 列宽边界控制（像素）
-Private Const MIN_COLUMN_WIDTH_PIXELS As Long = 50  ' 最小列宽像素
-Private Const MAX_COLUMN_WIDTH_PIXELS As Long = 300 ' 最大列宽像素
+Private Const MIN_COLUMN_WIDTH_PIXELS As Long = 50
+Private Const MAX_COLUMN_WIDTH_PIXELS As Long = 300
 
 ' 缓冲区设置（像素）
-Private Const TEXT_BUFFER_PIXELS As Long = 15       ' 文本缓冲区
-Private Const NUMERIC_BUFFER_PIXELS As Long = 12    ' 数值缓冲区
-Private Const DATE_BUFFER_PIXELS As Long = 12       ' 日期缓冲区
+Private Const TEXT_BUFFER_PIXELS As Long = 15
+Private Const NUMERIC_BUFFER_PIXELS As Long = 12
+Private Const DATE_BUFFER_PIXELS As Long = 12
 
 ' 缓冲区设置（字符单位）
-Private Const TEXT_BUFFER_CHARS As Double = 2#      ' 文本缓冲区
-Private Const NUMERIC_BUFFER_CHARS As Double = 1.6  ' 数值缓冲区
+Private Const TEXT_BUFFER_CHARS As Double = 2#
+Private Const NUMERIC_BUFFER_CHARS As Double = 1.6
 
 ' 字符宽度系数
-Private Const CHINESE_CHAR_WIDTH_FACTOR As Double = 1.2  ' 中文字符
-Private Const ENGLISH_CHAR_WIDTH_FACTOR As Double = 0.6  ' 英文字符
-Private Const NUMBER_CHAR_WIDTH_FACTOR As Double = 0.55  ' 数字字符
-Private Const OTHER_CHAR_WIDTH_FACTOR As Double = 0.7    ' 其他字符
+Private Const CHINESE_CHAR_WIDTH_FACTOR As Double = 1.2
+Private Const ENGLISH_CHAR_WIDTH_FACTOR As Double = 0.6
+Private Const NUMBER_CHAR_WIDTH_FACTOR As Double = 0.55
+Private Const OTHER_CHAR_WIDTH_FACTOR As Double = 0.7
 
 ' 单位转换
-Private Const PIXELS_PER_CHAR_UNIT As Double = 7.5  ' 标准字体像素转换
+Private Const PIXELS_PER_CHAR_UNIT As Double = 7.5
 
 ' 行高限制
-Private Const MIN_ROW_HEIGHT As Double = 15         ' 最小行高（磅）
-Private Const MAX_ROW_HEIGHT As Double = 409        ' 最大行高（磅）
+Private Const MIN_ROW_HEIGHT As Double = 15
+Private Const MAX_ROW_HEIGHT As Double = 409
 
 ' 性能控制
-Private Const MAX_CELLS_LIMIT As Long = 100000      ' 最大处理单元格数
-Private Const PROGRESS_UPDATE_INTERVAL As Long = 10 ' 进度更新间隔
+Private Const MAX_CELLS_LIMIT As Long = 100000
+Private Const PROGRESS_UPDATE_INTERVAL As Long = 10
+Private Const CHUNK_SIZE As Long = 1000
+Private Const CACHE_SIZE As Long = 100
 
 ' 日期序列号范围
-Private Const MIN_EXCEL_DATE As Long = 1            ' Excel最小日期
-Private Const MAX_EXCEL_DATE As Long = 2958465      ' Excel最大日期
+Private Const MIN_EXCEL_DATE As Long = 1
+Private Const MAX_EXCEL_DATE As Long = 2958465
 
 '--------------------------------------------------
 ' 数据类型和结构定义
 '--------------------------------------------------
-' 数据类型枚举
+' 数据类型枚举（细化版）
 Public Enum DataType
     EmptyCell = 1
-    TextValue = 2
-    NumericValue = 3
-    DateValue = 4
-    ErrorValue = 5
-    FormulaValue = 6
+    ShortText = 2
+    MediumText = 3
+    LongText = 4
+    IntegerValue = 5
+    DecimalValue = 6
+    CurrencyValue = 7
+    PercentageValue = 8
+    DateValue = 9
+    TimeValue = 10
+    DateTimeValue = 11
+    BooleanValue = 12
+    ErrorValue = 13
+    FormulaValue = 14
+    MixedContent = 15
+End Enum
+
+' 错误级别枚举
+Public Enum ErrorLevel
+    Fatal = 1
+    Severe = 2
+    Warning = 3
+    Info = 4
 End Enum
 
 ' 字符统计结构
@@ -93,9 +109,9 @@ End Type
 
 ' 列宽计算结果
 Private Type WidthResult
-    FinalWidth As Double      ' 最终列宽（字符单位）
-    NeedWrap As Boolean       ' 是否需要换行
-    OriginalWidth As Double   ' 原始计算宽度
+    FinalWidth As Double
+    NeedWrap As Boolean
+    OriginalWidth As Double
 End Type
 
 ' 对齐设置
@@ -114,6 +130,7 @@ Private Type ColumnAnalysisData
     CellCount As Long
     HasMergedCells As Boolean
     HasErrors As Boolean
+    TypeDistribution(1 To 15) As Long
 End Type
 
 ' 优化统计
@@ -124,11 +141,10 @@ Private Type OptimizationStats
     SkippedColumns As Long
     ProcessingTime As Double
     ErrorCount As Long
+    CacheHits As Long
+    ChunksProcessed As Long
 End Type
 
-'--------------------------------------------------
-' v2.0 新增类型定义
-'--------------------------------------------------
 ' 配置参数结构
 Private Type OptimizationConfig
     MaxColumnWidth As Double
@@ -139,6 +155,8 @@ Private Type OptimizationConfig
     SmartHeaderDetection As Boolean
     ShowPreview As Boolean
     AutoSave As Boolean
+    UseCache As Boolean
+    ChunkProcessing As Boolean
 End Type
 
 ' 单元格格式信息
@@ -173,6 +191,21 @@ Private Type PreviewInfo
     HasFormulas As Boolean
 End Type
 
+' 缓存结构
+Private Type CellWidthCache
+    Content As String
+    Width As Double
+    Hits As Long
+End Type
+
+' 错误信息结构
+Private Type ErrorInfo
+    Level As ErrorLevel
+    Code As Long
+    Description As String
+    Action As String
+End Type
+
 '--------------------------------------------------
 ' 全局变量
 '--------------------------------------------------
@@ -188,15 +221,20 @@ Private g_HasUndoInfo As Boolean
 Private g_CancelOperation As Boolean
 Private g_CheckCounter As Long
 
+' 缓存管理
+Private g_WidthCache() As CellWidthCache
+Private g_CacheSize As Long
+Private g_CacheHits As Long
+
+' 性能统计
+Private g_ChunksProcessed As Long
+
 '--------------------------------------------------
-' Windows API 计时器声明
-' 注意：修复了条件编译的兼容性问题
+' Windows API 声明
 '--------------------------------------------------
 #If VBA7 Then
-    ' 64位Office
     Private Declare PtrSafe Function GetTickCount Lib "kernel32" () As Long
 #Else
-    ' 32位Office
     Private Declare Function GetTickCount Lib "kernel32" () As Long
 #End If
 
@@ -205,22 +243,23 @@ Private g_CheckCounter As Long
 '==================================================
 
 '--------------------------------------------------
-' 主入口函数 - 优化选定区域的布局（带配置和预览）
+' 主入口函数 - 优化选定区域的布局
 '--------------------------------------------------
 Public Sub OptimizeLayout()
     On Error GoTo ErrorHandler
     
-    ' 初始化配置
+    ' 初始化
     If Not g_ConfigInitialized Then
         InitializeDefaultConfig
+        LoadConfigFromWorkbook
     End If
     
-    ' ---- 初始化阶段 ----
+    InitializeCache
+    ResetCancelFlag
+    g_ChunksProcessed = 0
+    
     Dim startTime As Long
     startTime = StartTimer()
-    
-    ' 重置中断标志
-    ResetCancelFlag
     
     ' 保存Excel状态
     Dim originalScreenUpdating As Boolean
@@ -234,139 +273,109 @@ Public Sub OptimizeLayout()
     Application.ScreenUpdating = False
     Application.Calculation = xlCalculationManual
     
-    ' ---- 验证阶段 ----
+    ' 验证选择
     Dim selectedRange As Range
     Set selectedRange = Selection
     
-    ' 验证选择
-    If Not ValidateSelection(selectedRange) Then
+    If Not ValidateSelectionEnhanced(selectedRange) Then
         GoTo CleanExit
     End If
     
-    ' ---- 配置阶段 ----
+    ' 配置阶段
     If g_Config.ShowPreview Then
         If Not GetUserConfiguration() Then
             GoTo CleanExit
         End If
     End If
     
-    ' ---- 预览阶段 ----
+    ' 预览阶段
     If g_Config.ShowPreview Then
         Dim previewInfo As PreviewInfo
         previewInfo = CollectPreviewInfo(selectedRange)
         
-        Dim userResponse As VbMsgBoxResult
-        userResponse = ShowPreviewDialog(previewInfo, selectedRange)
-        
-        If userResponse <> vbYes Then
+        If ShowPreviewDialog(previewInfo, selectedRange) <> vbYes Then
             GoTo CleanExit
         End If
     End If
     
-    ' ---- 保存撤销信息 ----
+    ' 保存撤销信息
     If Not SaveStateForUndo(selectedRange) Then
         If MsgBox("无法保存撤销信息，是否继续？", vbYesNo + vbQuestion, "Excel布局优化系统") = vbNo Then
             GoTo CleanExit
         End If
     End If
     
-    ' ---- 分析阶段 ----
-    ShowProgress 0, 100, "正在分析数据..."
-    
-    ' 读取数据到内存
-    Dim dataArray As Variant
-    dataArray = ReadRangeToArray(selectedRange)
-    
-    ' 检查是否包含表头
-    Dim hasHeader As Boolean
-    If g_Config.SmartHeaderDetection And selectedRange.Rows.Count > 1 Then
-        hasHeader = IsHeaderRow(selectedRange.Rows(1), selectedRange.Rows(2))
+    ' 执行优化
+    Dim success As Boolean
+    If g_Config.ChunkProcessing And selectedRange.Rows.Count > CHUNK_SIZE Then
+        success = ProcessInChunks(selectedRange)
+    Else
+        success = ProcessNormal(selectedRange)
     End If
     
-    ' 分析每列
-    Dim columnAnalyses() As ColumnAnalysisData
-    columnAnalyses = AnalyzeColumnsWithInterrupt(dataArray, selectedRange)
-    
-    ' 检查中断
-    If g_CancelOperation Then
+    If Not success Then
         GoTo RestoreAndExit
     End If
     
-    ' ---- 优化阶段 ----
-    ShowProgress 50, 100, "正在应用优化..."
+    ' 保存配置
+    If g_Config.AutoSave Then
+        SaveConfigToWorkbook
+    End If
     
-    ' 应用列宽优化
-    ApplyColumnWidthOptimization selectedRange, columnAnalyses
-    
-    ' 应用对齐优化（考虑表头）
-    ApplyAlignmentOptimizationWithHeader selectedRange, columnAnalyses, hasHeader
-    
-    ' 应用换行和行高调整
-    ApplyWrapAndRowHeight selectedRange, columnAnalyses
-    
-    ' ---- 完成阶段 ----
+    ' 显示统计
     Dim stats As OptimizationStats
-    stats = GenerateStatistics(columnAnalyses, GetElapsedTime(startTime))
-    
-    ShowCompletionMessageWithUndo stats
+    stats = GenerateEnhancedStatistics(selectedRange, GetElapsedTime(startTime))
+    ShowCompletionMessageEnhanced stats
     
 CleanExit:
-    ' 恢复Excel状态
     Application.ScreenUpdating = originalScreenUpdating
     Application.Calculation = originalCalculation
     Application.StatusBar = originalStatusBar
     ClearProgress
+    ClearCache
     Exit Sub
     
 RestoreAndExit:
-    ' 用户取消，恢复原始状态
     If g_HasUndoInfo Then
         Application.ScreenUpdating = True
         RestoreFromUndo
     End If
-    MsgBox "操作已取消", vbInformation, "Excel布局优化系统"
+    MsgBox "操作已取消或失败", vbInformation, "Excel布局优化系统"
     GoTo CleanExit
     
 ErrorHandler:
-    ' 错误处理
-    Dim errorMsg As String
-    errorMsg = "优化过程中发生错误：" & vbCrLf
-    errorMsg = errorMsg & "错误代码：" & Err.Number & vbCrLf
-    errorMsg = errorMsg & "错误描述：" & Err.Description
+    Dim errorInfo As ErrorInfo
+    errorInfo = ClassifyError(Err.Number, Err.Description)
+    HandleErrorByLevel errorInfo
     
     Application.ScreenUpdating = True
     Application.Calculation = xlCalculationAutomatic
     Application.StatusBar = False
     ClearProgress
-    
-    MsgBox errorMsg, vbCritical, "Excel布局优化系统"
+    ClearCache
     
     Resume CleanExit
 End Sub
 
 '--------------------------------------------------
-' 快速优化入口（跳过配置和预览）
+' 快速优化入口
 '--------------------------------------------------
 Public Sub QuickOptimize()
-    ' 初始化配置
     If Not g_ConfigInitialized Then
         InitializeDefaultConfig
     End If
     
-    ' 临时禁用预览
     Dim originalShowPreview As Boolean
     originalShowPreview = g_Config.ShowPreview
     g_Config.ShowPreview = False
     
-    ' 执行优化
     OptimizeLayout
     
-    ' 恢复设置
     g_Config.ShowPreview = originalShowPreview
 End Sub
 
 '--------------------------------------------------
-' 撤销上次优化操作
+' 撤销上次优化
 '--------------------------------------------------
 Public Sub UndoLastOptimization()
     If Not g_HasUndoInfo Then
@@ -378,7 +387,6 @@ Public Sub UndoLastOptimization()
     
     Application.ScreenUpdating = False
     
-    ' 执行撤销
     If RestoreFromUndo() Then
         MsgBox "已撤销上次优化操作", vbInformation, "Excel布局优化系统"
         g_HasUndoInfo = False
@@ -395,7 +403,498 @@ ErrorHandler:
 End Sub
 
 '==================================================
-' 配置管理函数
+' 分块处理实现
+'==================================================
+
+'--------------------------------------------------
+' 分块处理主函数
+'--------------------------------------------------
+Private Function ProcessInChunks(targetRange As Range) As Boolean
+    On Error GoTo ErrorHandler
+    
+    Dim totalRows As Long
+    totalRows = targetRange.Rows.Count
+    
+    Dim startRow As Long, endRow As Long
+    Dim chunkIndex As Long
+    chunkIndex = 0
+    
+    For startRow = 1 To totalRows Step CHUNK_SIZE
+        endRow = Application.Min(startRow + CHUNK_SIZE - 1, totalRows)
+        chunkIndex = chunkIndex + 1
+        
+        ShowProgress startRow, totalRows, "处理块 " & chunkIndex & "..."
+        
+        ' 处理当前块
+        Dim chunkRange As Range
+        Set chunkRange = targetRange.Rows(startRow & ":" & endRow)
+        
+        If Not ProcessChunk(chunkRange, targetRange.Columns.Count) Then
+            ProcessInChunks = False
+            Exit Function
+        End If
+        
+        g_ChunksProcessed = g_ChunksProcessed + 1
+        
+        ' 检查中断
+        If CheckForCancel() Then
+            g_CancelOperation = True
+            ProcessInChunks = False
+            Exit Function
+        End If
+        
+        ' 定期释放内存
+        If chunkIndex Mod 10 = 0 Then
+            DoEvents
+            CompactCache
+        End If
+    Next startRow
+    
+    ProcessInChunks = True
+    Exit Function
+    
+ErrorHandler:
+    ProcessInChunks = False
+End Function
+
+'--------------------------------------------------
+' 处理单个块
+'--------------------------------------------------
+Private Function ProcessChunk(chunkRange As Range, totalColumns As Long) As Boolean
+    On Error GoTo ErrorHandler
+    
+    ' 读取数据
+    Dim dataArray As Variant
+    dataArray = chunkRange.Value2
+    
+    ' 分析数据
+    Dim columnAnalyses() As ColumnAnalysisData
+    ReDim columnAnalyses(1 To totalColumns)
+    
+    Dim col As Long
+    For col = 1 To totalColumns
+        columnAnalyses(col) = AnalyzeColumnEnhanced(dataArray, col, chunkRange.Rows.Count, chunkRange.Columns(col))
+    Next col
+    
+    ' 应用优化
+    ApplyOptimizationToChunk chunkRange, columnAnalyses
+    
+    ProcessChunk = True
+    Exit Function
+    
+ErrorHandler:
+    ProcessChunk = False
+End Function
+
+'--------------------------------------------------
+' 普通处理（不分块）
+'--------------------------------------------------
+Private Function ProcessNormal(targetRange As Range) As Boolean
+    On Error GoTo ErrorHandler
+    
+    ShowProgress 0, 100, "正在分析数据..."
+    
+    ' 读取数据
+    Dim dataArray As Variant
+    dataArray = ReadRangeToArray(targetRange)
+    
+    ' 检查表头
+    Dim hasHeader As Boolean
+    If g_Config.SmartHeaderDetection And targetRange.Rows.Count > 1 Then
+        hasHeader = IsHeaderRow(targetRange.Rows(1), targetRange.Rows(2))
+    End If
+    
+    ' 分析列
+    Dim columnAnalyses() As ColumnAnalysisData
+    columnAnalyses = AnalyzeAllColumns(dataArray, targetRange)
+    
+    If g_CancelOperation Then
+        ProcessNormal = False
+        Exit Function
+    End If
+    
+    ShowProgress 50, 100, "正在应用优化..."
+    
+    ' 应用优化
+    ApplyColumnWidthOptimization targetRange, columnAnalyses
+    ApplyAlignmentOptimizationWithHeader targetRange, columnAnalyses, hasHeader
+    ApplyWrapAndRowHeight targetRange, columnAnalyses
+    
+    ProcessNormal = True
+    Exit Function
+    
+ErrorHandler:
+    ProcessNormal = False
+End Function
+
+'==================================================
+' 缓存管理
+'==================================================
+
+'--------------------------------------------------
+' 初始化缓存
+'--------------------------------------------------
+Private Sub InitializeCache()
+    If Not g_Config.UseCache Then Exit Sub
+    
+    ReDim g_WidthCache(1 To CACHE_SIZE)
+    g_CacheSize = 0
+    g_CacheHits = 0
+End Sub
+
+'--------------------------------------------------
+' 清空缓存
+'--------------------------------------------------
+Private Sub ClearCache()
+    If Not g_Config.UseCache Then Exit Sub
+    
+    Erase g_WidthCache
+    g_CacheSize = 0
+    g_CacheHits = 0
+End Sub
+
+'--------------------------------------------------
+' 压缩缓存（移除低频项）
+'--------------------------------------------------
+Private Sub CompactCache()
+    If Not g_Config.UseCache Or g_CacheSize < CACHE_SIZE Then Exit Sub
+    
+    ' 按命中次数排序，保留前50%
+    Dim i As Long, j As Long
+    Dim temp As CellWidthCache
+    
+    ' 简单冒泡排序
+    For i = 1 To g_CacheSize - 1
+        For j = i + 1 To g_CacheSize
+            If g_WidthCache(i).Hits < g_WidthCache(j).Hits Then
+                temp = g_WidthCache(i)
+                g_WidthCache(i) = g_WidthCache(j)
+                g_WidthCache(j) = temp
+            End If
+        Next j
+    Next i
+    
+    ' 保留前50%
+    g_CacheSize = g_CacheSize \ 2
+    ReDim Preserve g_WidthCache(1 To CACHE_SIZE)
+End Sub
+
+'--------------------------------------------------
+' 获取缓存的宽度
+'--------------------------------------------------
+Private Function GetCachedWidth(content As String) As Double
+    If Not g_Config.UseCache Then
+        GetCachedWidth = CalculateTextWidth(content, 11)
+        Exit Function
+    End If
+    
+    ' 查找缓存
+    Dim i As Long
+    For i = 1 To g_CacheSize
+        If g_WidthCache(i).Content = content Then
+            g_WidthCache(i).Hits = g_WidthCache(i).Hits + 1
+            g_CacheHits = g_CacheHits + 1
+            GetCachedWidth = g_WidthCache(i).Width
+            Exit Function
+        End If
+    Next i
+    
+    ' 计算并缓存
+    Dim width As Double
+    width = CalculateTextWidth(content, 11)
+    
+    ' 添加到缓存
+    If g_CacheSize < CACHE_SIZE Then
+        g_CacheSize = g_CacheSize + 1
+        g_WidthCache(g_CacheSize).Content = content
+        g_WidthCache(g_CacheSize).Width = width
+        g_WidthCache(g_CacheSize).Hits = 1
+    End If
+    
+    GetCachedWidth = width
+End Function
+
+'==================================================
+' 增强的数据分析
+'==================================================
+
+'--------------------------------------------------
+' 增强的列分析
+'--------------------------------------------------
+Private Function AnalyzeColumnEnhanced(dataArray As Variant, columnIndex As Long, rowCount As Long, columnRange As Range) As ColumnAnalysisData
+    Dim analysis As ColumnAnalysisData
+    Dim row As Long
+    Dim cellValue As Variant
+    Dim cellDataType As DataType
+    Dim cellWidth As Double
+    Dim maxWidth As Double
+    
+    analysis.ColumnIndex = columnIndex
+    analysis.CellCount = 0
+    analysis.HasMergedCells = HasMergedCells(columnRange)
+    analysis.HasErrors = False
+    maxWidth = 0
+    
+    If analysis.HasMergedCells Then
+        analysis.DataType = ShortText
+        analysis.MaxContentWidth = 0
+        analysis.OptimalWidth = 0
+        analysis.NeedWrap = False
+        AnalyzeColumnEnhanced = analysis
+        Exit Function
+    End If
+    
+    ' 分析每个单元格
+    For row = 1 To rowCount
+        If IsArray(dataArray) And UBound(dataArray, 2) >= columnIndex Then
+            cellValue = dataArray(row, columnIndex)
+        Else
+            cellValue = dataArray
+        End If
+        
+        If Not IsEmpty(cellValue) And cellValue <> "" Then
+            analysis.CellCount = analysis.CellCount + 1
+            
+            ' 获取细化的数据类型
+            cellDataType = GetEnhancedDataType(cellValue)
+            analysis.TypeDistribution(cellDataType) = analysis.TypeDistribution(cellDataType) + 1
+            
+            If cellDataType = ErrorValue Then
+                analysis.HasErrors = True
+            End If
+            
+            If cellDataType <> ErrorValue Then
+                cellWidth = GetCachedWidth(SafeGetCellValue(cellValue))
+                If cellWidth > maxWidth Then
+                    maxWidth = cellWidth
+                End If
+            End If
+        End If
+    Next row
+    
+    ' 确定主导数据类型
+    analysis.DataType = DetermineColumnTypeEnhanced(analysis.TypeDistribution)
+    
+    ' 计算最优列宽
+    analysis.MaxContentWidth = maxWidth
+    Dim widthResult As WidthResult
+    widthResult = CalculateOptimalWidthEnhanced(maxWidth, analysis.DataType)
+    analysis.OptimalWidth = widthResult.FinalWidth
+    analysis.NeedWrap = widthResult.NeedWrap
+    
+    AnalyzeColumnEnhanced = analysis
+End Function
+
+'--------------------------------------------------
+' 获取增强的数据类型
+'--------------------------------------------------
+Private Function GetEnhancedDataType(cellValue As Variant) As DataType
+    If IsError(cellValue) Then
+        GetEnhancedDataType = ErrorValue
+        Exit Function
+    End If
+    
+    If IsEmpty(cellValue) Or cellValue = "" Then
+        GetEnhancedDataType = EmptyCell
+        Exit Function
+    End If
+    
+    ' 布尔值检测
+    If TypeName(cellValue) = "Boolean" Then
+        GetEnhancedDataType = BooleanValue
+        Exit Function
+    End If
+    
+    ' 日期时间检测
+    If IsDate(cellValue) Then
+        Dim dateVal As Date
+        dateVal = CDate(cellValue)
+        
+        If dateVal = Int(dateVal) Then
+            GetEnhancedDataType = DateValue
+        ElseIf dateVal < 1 Then
+            GetEnhancedDataType = TimeValue
+        Else
+            GetEnhancedDataType = DateTimeValue
+        End If
+        Exit Function
+    End If
+    
+    ' 数值检测
+    If IsNumeric(cellValue) Then
+        Dim numStr As String
+        numStr = CStr(cellValue)
+        
+        If InStr(numStr, "%") > 0 Then
+            GetEnhancedDataType = PercentageValue
+        ElseIf InStr(numStr, "$") > 0 Or InStr(numStr, "¥") > 0 Or InStr(numStr, "€") > 0 Then
+            GetEnhancedDataType = CurrencyValue
+        ElseIf InStr(numStr, ".") > 0 Then
+            GetEnhancedDataType = DecimalValue
+        Else
+            GetEnhancedDataType = IntegerValue
+        End If
+        Exit Function
+    End If
+    
+    ' 文本类型细分
+    Dim textLen As Long
+    textLen = Len(CStr(cellValue))
+    
+    If textLen <= 10 Then
+        GetEnhancedDataType = ShortText
+    ElseIf textLen <= 50 Then
+        GetEnhancedDataType = MediumText
+    Else
+        GetEnhancedDataType = LongText
+    End If
+End Function
+
+'--------------------------------------------------
+' 确定增强的列类型
+'--------------------------------------------------
+Private Function DetermineColumnTypeEnhanced(typeDistribution() As Long) As DataType
+    Dim maxCount As Long
+    Dim dominantType As DataType
+    Dim i As Long
+    
+    maxCount = 0
+    dominantType = ShortText
+    
+    ' 找出主导类型
+    For i = 1 To 15
+        If i <> EmptyCell And i <> ErrorValue Then
+            If typeDistribution(i) > maxCount Then
+                maxCount = typeDistribution(i)
+                dominantType = i
+            End If
+        End If
+    Next i
+    
+    ' 特殊规则
+    ' 如果有长文本，整列按长文本处理
+    If typeDistribution(LongText) > 0 Then
+        dominantType = LongText
+    ' 如果混合了文本和数值，按混合内容处理
+    ElseIf (typeDistribution(ShortText) + typeDistribution(MediumText) > 0) And _
+           (typeDistribution(IntegerValue) + typeDistribution(DecimalValue) > 0) Then
+        dominantType = MixedContent
+    End If
+    
+    DetermineColumnTypeEnhanced = dominantType
+End Function
+
+'--------------------------------------------------
+' 计算增强的最优宽度
+'--------------------------------------------------
+Private Function CalculateOptimalWidthEnhanced(contentWidth As Double, dataType As DataType) As WidthResult
+    Dim result As WidthResult
+    Dim buffer As Double
+    Dim calculatedWidth As Double
+    
+    If Not g_ConfigInitialized Then
+        InitializeDefaultConfig
+    End If
+    
+    ' 根据数据类型确定缓冲区
+    Select Case dataType
+        Case ShortText, MediumText
+            buffer = g_Config.TextBuffer
+        Case LongText
+            buffer = g_Config.TextBuffer * 1.5
+        Case IntegerValue, DecimalValue
+            buffer = g_Config.NumericBuffer
+        Case CurrencyValue, PercentageValue
+            buffer = g_Config.NumericBuffer * 1.2
+        Case DateValue, TimeValue, DateTimeValue
+            buffer = g_Config.NumericBuffer
+        Case MixedContent
+            buffer = g_Config.TextBuffer * 1.2
+        Case Else
+            buffer = g_Config.TextBuffer
+    End Select
+    
+    calculatedWidth = contentWidth + buffer
+    result.OriginalWidth = calculatedWidth
+    
+    ' 应用边界控制
+    If calculatedWidth < g_Config.MinColumnWidth Then
+        result.FinalWidth = g_Config.MinColumnWidth
+        result.NeedWrap = False
+    ElseIf calculatedWidth >= g_Config.MaxColumnWidth Then
+        result.FinalWidth = g_Config.MaxColumnWidth
+        result.NeedWrap = (dataType = LongText Or dataType = MediumText)
+    Else
+        result.FinalWidth = calculatedWidth
+        result.NeedWrap = False
+    End If
+    
+    CalculateOptimalWidthEnhanced = result
+End Function
+
+'==================================================
+' 错误处理增强
+'==================================================
+
+'--------------------------------------------------
+' 错误分类
+'--------------------------------------------------
+Private Function ClassifyError(errorCode As Long, errorDesc As String) As ErrorInfo
+    Dim info As ErrorInfo
+    
+    info.Code = errorCode
+    info.Description = errorDesc
+    
+    Select Case errorCode
+        Case 1004 ' 应用程序定义或对象定义错误
+            info.Level = Fatal
+            info.Action = "终止操作"
+        Case 13 ' 类型不匹配
+            info.Level = Severe
+            info.Action = "跳过当前项"
+        Case 18 ' 用户中断
+            info.Level = Info
+            info.Action = "取消操作"
+        Case 6 ' 溢出
+            info.Level = Warning
+            info.Action = "使用默认值"
+        Case Else
+            info.Level = Warning
+            info.Action = "记录并继续"
+    End Select
+    
+    ClassifyError = info
+End Function
+
+'--------------------------------------------------
+' 按级别处理错误
+'--------------------------------------------------
+Private Sub HandleErrorByLevel(errorInfo As ErrorInfo)
+    Dim message As String
+    
+    Select Case errorInfo.Level
+        Case Fatal
+            message = "致命错误：" & errorInfo.Description & vbCrLf
+            message = message & "操作已终止"
+            MsgBox message, vbCritical, "Excel布局优化系统"
+            
+        Case Severe
+            message = "严重错误：" & errorInfo.Description & vbCrLf
+            message = message & "将" & errorInfo.Action
+            MsgBox message, vbExclamation, "Excel布局优化系统"
+            
+        Case Warning
+            ' 记录警告，不中断
+            Debug.Print "警告: " & errorInfo.Description
+            
+        Case Info
+            ' 信息级别，静默处理
+            Debug.Print "信息: " & errorInfo.Description
+    End Select
+End Sub
+
+'==================================================
+' 配置管理增强
 '==================================================
 
 '--------------------------------------------------
@@ -411,378 +910,397 @@ Private Sub InitializeDefaultConfig()
         .SmartHeaderDetection = True
         .ShowPreview = True
         .AutoSave = True
+        .UseCache = True
+        .ChunkProcessing = True
     End With
     g_ConfigInitialized = True
 End Sub
 
 '--------------------------------------------------
-' 获取用户配置
+' 保存配置到工作簿
 '--------------------------------------------------
-Private Function GetUserConfiguration() As Boolean
-    On Error GoTo ErrorHandler
-    
-    Dim response As String
-    Dim prompt As String
-    
-    prompt = "设置最大列宽（字符单位）" & vbCrLf
-    prompt = prompt & "范围: 30-100，默认: " & g_Config.MaxColumnWidth & vbCrLf
-    prompt = prompt & "直接按Enter使用默认值"
-    
-    response = InputBox(prompt, "布局优化配置", CStr(g_Config.MaxColumnWidth))
-    
-    If response = "" Then
-        ' 用户按Enter或取消，使用默认值
-        GetUserConfiguration = True
-        Exit Function
-    End If
-    
-    ' 验证输入
-    If IsNumeric(response) Then
-        Dim value As Double
-        value = CDbl(response)
-        If value >= 30 And value <= 100 Then
-            g_Config.MaxColumnWidth = value
-            g_Config.WrapThreshold = value
-        Else
-            MsgBox "请输入30-100之间的数值", vbExclamation
-            GetUserConfiguration = False
-            Exit Function
-        End If
-    End If
-    
-    GetUserConfiguration = True
-    Exit Function
-    
-ErrorHandler:
-    GetUserConfiguration = False
-End Function
-
-'==================================================
-' 撤销机制实现
-'==================================================
-
-'--------------------------------------------------
-' 保存当前状态用于撤销
-'--------------------------------------------------
-Private Function SaveStateForUndo(targetRange As Range) As Boolean
-    On Error GoTo ErrorHandler
-    
-    ' 初始化撤销信息
-    With g_LastUndoInfo
-        .RangeAddress = targetRange.Address
-        .WorksheetName = targetRange.Worksheet.Name
-        .Timestamp = Now
-        .Description = "布局优化 " & Format(Now, "hh:mm:ss")
-        
-        ' 保存列格式
-        Dim colCount As Long
-        colCount = targetRange.Columns.Count
-        ReDim .ColumnFormats(1 To colCount)
-        
-        Dim i As Long
-        For i = 1 To colCount
-            With .ColumnFormats(i)
-                .ColumnWidth = targetRange.Columns(i).ColumnWidth
-                .WrapText = targetRange.Cells(1, i).WrapText
-                .HorizontalAlignment = targetRange.Cells(1, i).HorizontalAlignment
-                .VerticalAlignment = targetRange.Cells(1, i).VerticalAlignment
-            End With
-        Next i
-        
-        ' 保存行高
-        Dim rowCount As Long
-        rowCount = targetRange.Rows.Count
-        ReDim .RowHeights(1 To rowCount)
-        
-        For i = 1 To rowCount
-            .RowHeights(i) = targetRange.Rows(i).RowHeight
-        Next i
-    End With
-    
-    g_HasUndoInfo = True
-    SaveStateForUndo = True
-    Exit Function
-    
-ErrorHandler:
-    SaveStateForUndo = False
-End Function
-
-'--------------------------------------------------
-' 从撤销信息恢复
-'--------------------------------------------------
-Private Function RestoreFromUndo() As Boolean
-    On Error GoTo ErrorHandler
-    
-    ' 定位原始区域
-    Dim ws As Worksheet
-    Set ws = Worksheets(g_LastUndoInfo.WorksheetName)
-    Dim targetRange As Range
-    Set targetRange = ws.Range(g_LastUndoInfo.RangeAddress)
-    
-    ' 恢复列格式
-    Dim i As Long
-    For i = 1 To UBound(g_LastUndoInfo.ColumnFormats)
-        With targetRange.Columns(i)
-            .ColumnWidth = g_LastUndoInfo.ColumnFormats(i).ColumnWidth
-            .WrapText = g_LastUndoInfo.ColumnFormats(i).WrapText
-            .HorizontalAlignment = g_LastUndoInfo.ColumnFormats(i).HorizontalAlignment
-            .VerticalAlignment = g_LastUndoInfo.ColumnFormats(i).VerticalAlignment
-        End With
-    Next i
-    
-    ' 恢复行高
-    For i = 1 To UBound(g_LastUndoInfo.RowHeights)
-        targetRange.Rows(i).RowHeight = g_LastUndoInfo.RowHeights(i)
-    Next i
-    
-    RestoreFromUndo = True
-    Exit Function
-    
-ErrorHandler:
-    RestoreFromUndo = False
-End Function
-
-'==================================================
-' 预览功能实现
-'==================================================
-
-'--------------------------------------------------
-' 收集预览信息
-'--------------------------------------------------
-Private Function CollectPreviewInfo(targetRange As Range) As PreviewInfo
-    Dim info As PreviewInfo
-    
-    With info
-        .TotalColumns = targetRange.Columns.Count
-        .AffectedCells = targetRange.Cells.Count
-        
-        ' 快速扫描分析
-        Dim col As Range
-        Dim maxContent As Double, minContent As Double
-        minContent = 999
-        maxContent = 0
-        
-        For Each col In targetRange.Columns
-            ' 分析每列内容宽度
-            Dim colWidth As Double
-            colWidth = AnalyzeColumnWidth(col)
-            
-            If colWidth < minContent Then minContent = colWidth
-            If colWidth > maxContent Then maxContent = colWidth
-            
-            If Abs(colWidth - col.ColumnWidth) > 0.5 Then
-                .ColumnsToAdjust = .ColumnsToAdjust + 1
-            End If
-            
-            If colWidth > g_Config.MaxColumnWidth Then
-                .ColumnsNeedWrap = .ColumnsNeedWrap + 1
-            End If
-        Next col
-        
-        .MinWidth = minContent
-        .MaxWidth = maxContent
-        
-        ' 检测特殊情况
-        .HasMergedCells = HasMergedCells(targetRange)
-        .HasFormulas = HasFormulas(targetRange)
-        
-        ' 估算处理时间（基于经验公式）
-        .EstimatedTime = (.AffectedCells / 10000) * 1.5 ' 每万个单元格约1.5秒
-        If .EstimatedTime < 0.5 Then .EstimatedTime = 0.5
-    End With
-    
-    CollectPreviewInfo = info
-End Function
-
-'--------------------------------------------------
-' 分析列宽度（快速版）
-'--------------------------------------------------
-Private Function AnalyzeColumnWidth(columnRange As Range) As Double
-    Dim maxWidth As Double
-    Dim cell As Range
-    Dim sampleSize As Long
-    
-    maxWidth = 0
-    sampleSize = 0
-    
-    ' 采样分析（最多100个单元格）
-    For Each cell In columnRange.Cells
-        If Not IsEmpty(cell.value) Then
-            Dim cellWidth As Double
-            cellWidth = CalculateTextWidth(CStr(cell.value), 11)
-            If cellWidth > maxWidth Then maxWidth = cellWidth
-            
-            sampleSize = sampleSize + 1
-            If sampleSize >= 100 Then Exit For
-        End If
-    Next cell
-    
-    AnalyzeColumnWidth = maxWidth
-End Function
-
-'--------------------------------------------------
-' 检查是否包含公式
-'--------------------------------------------------
-Private Function HasFormulas(checkRange As Range) As Boolean
+Private Sub SaveConfigToWorkbook()
     On Error Resume Next
-    HasFormulas = (checkRange.SpecialCells(xlCellTypeFormulas).Count > 0)
-    On Error GoTo 0
-End Function
-
-'--------------------------------------------------
-' 显示预览对话框
-'--------------------------------------------------
-Private Function ShowPreviewDialog(info As PreviewInfo, targetRange As Range) As VbMsgBoxResult
-    Dim message As String
     
-    message = "布局优化预览" & vbCrLf & vbCrLf
-    message = message & "优化区域: " & targetRange.Address & vbCrLf
-    message = message & String(40, "-") & vbCrLf
-    message = message & "• 总列数: " & info.TotalColumns & vbCrLf
-    message = message & "• 需调整: " & info.ColumnsToAdjust & " 列" & vbCrLf
+    Dim props As Object
+    Set props = ThisWorkbook.CustomDocumentProperties
     
-    If info.ColumnsNeedWrap > 0 Then
-        message = message & "• 需换行: " & info.ColumnsNeedWrap & " 列" & vbCrLf
-    End If
+    ' 删除旧配置
+    props("ExcelOptimizer_Config").Delete
     
-    message = message & "• 宽度范围: " & Format(info.MinWidth, "0.0") & " - " & Format(info.MaxWidth, "0.0") & vbCrLf
+    ' 保存新配置
+    Dim configStr As String
+    With g_Config
+        configStr = .MinColumnWidth & "|" & .MaxColumnWidth & "|" & _
+                   .TextBuffer & "|" & .NumericBuffer & "|" & _
+                   .WrapThreshold & "|" & IIf(.SmartHeaderDetection, "1", "0") & "|" & _
+                   IIf(.UseCache, "1", "0") & "|" & IIf(.ChunkProcessing, "1", "0")
+    End With
     
-    If info.HasMergedCells Then
-        message = message & "• 警告: 包含合并单元格（将跳过）" & vbCrLf
-    End If
-    
-    If info.HasFormulas Then
-        message = message & "• 提示: 包含公式" & vbCrLf
-    End If
-    
-    message = message & String(40, "-") & vbCrLf
-    message = message & "预计耗时: " & Format(info.EstimatedTime, "0.0") & " 秒" & vbCrLf & vbCrLf
-    message = message & "是否继续？（处理中可按ESC中断）"
-    
-    ShowPreviewDialog = MsgBox(message, vbYesNoCancel + vbInformation, "Excel布局优化")
-End Function
-
-'==================================================
-' 智能表头识别
-'==================================================
-
-'--------------------------------------------------
-' 判断是否为表头行
-'--------------------------------------------------
-Private Function IsHeaderRow(firstRow As Range, secondRow As Range) As Boolean
-    Dim score As Integer
-    score = 0
-    
-    ' 检测标准1：第一行全是文本
-    Dim allText As Boolean
-    allText = True
-    Dim cell As Range
-    For Each cell In firstRow.Cells
-        If Not IsEmpty(cell.value) And IsNumeric(cell.value) Then
-            allText = False
-            Exit For
-        End If
-    Next cell
-    If allText Then score = score + 2
-    
-    ' 检测标准2：第一行无空单元格
-    Dim noEmpty As Boolean
-    noEmpty = True
-    For Each cell In firstRow.Cells
-        If IsEmpty(cell.value) Then
-            noEmpty = False
-            Exit For
-        End If
-    Next cell
-    If noEmpty Then score = score + 2
-    
-    ' 检测标准3：格式特征（加粗或背景色）
-    Dim hasFormat As Boolean
-    For Each cell In firstRow.Cells
-        If cell.Font.Bold Or cell.Interior.ColorIndex <> xlNone Then
-            hasFormat = True
-            Exit For
-        End If
-    Next cell
-    If hasFormat Then score = score + 3
-    
-    ' 检测标准4：与第二行数据类型差异
-    If Not secondRow Is Nothing Then
-        Dim typeDiff As Integer
-        Dim i As Long
-        For i = 1 To Application.Min(firstRow.Cells.Count, secondRow.Cells.Count)
-            If GetCellDataType(firstRow.Cells(i).value) <> GetCellDataType(secondRow.Cells(i).value) Then
-                typeDiff = typeDiff + 1
-            End If
-        Next i
-        If typeDiff > firstRow.Cells.Count / 2 Then score = score + 2
-    End If
-    
-    ' 检测标准5：文本长度
-    Dim avgLength As Double
-    Dim totalLength As Long
-    Dim textCount As Long
-    For Each cell In firstRow.Cells
-        If Not IsEmpty(cell.value) Then
-            totalLength = totalLength + Len(CStr(cell.value))
-            textCount = textCount + 1
-        End If
-    Next cell
-    If textCount > 0 Then
-        avgLength = totalLength / textCount
-        If avgLength < 20 Then score = score + 1
-    End If
-    
-    ' 得分>=4认为是表头
-    IsHeaderRow = (score >= 4)
-End Function
-
-'==================================================
-' 中断机制实现
-'==================================================
-
-'--------------------------------------------------
-' 重置中断标志
-'--------------------------------------------------
-Private Sub ResetCancelFlag()
-    g_CancelOperation = False
-    g_CheckCounter = 0
-    Application.EnableCancelKey = xlErrorHandler
+    props.Add Name:="ExcelOptimizer_Config", _
+              LinkToContent:=False, _
+              Type:=msoPropertyTypeString, _
+              Value:=configStr
 End Sub
 
 '--------------------------------------------------
-' 检查是否需要中断
+' 从工作簿加载配置
 '--------------------------------------------------
-Private Function CheckForCancel() As Boolean
-    ' 每100次调用检测一次
-    g_CheckCounter = g_CheckCounter + 1
-    If g_CheckCounter Mod 100 <> 0 Then
-        CheckForCancel = False
+Private Sub LoadConfigFromWorkbook()
+    On Error Resume Next
+    
+    Dim configStr As String
+    configStr = ThisWorkbook.CustomDocumentProperties("ExcelOptimizer_Config").Value
+    
+    If configStr <> "" Then
+        Dim parts() As String
+        parts = Split(configStr, "|")
+        
+        If UBound(parts) >= 5 Then
+            With g_Config
+                .MinColumnWidth = CDbl(parts(0))
+                .MaxColumnWidth = CDbl(parts(1))
+                .TextBuffer = CDbl(parts(2))
+                .NumericBuffer = CDbl(parts(3))
+                .WrapThreshold = CDbl(parts(4))
+                .SmartHeaderDetection = (parts(5) = "1")
+                If UBound(parts) >= 7 Then
+                    .UseCache = (parts(6) = "1")
+                    .ChunkProcessing = (parts(7) = "1")
+                End If
+            End With
+        End If
+    End If
+End Sub
+
+'==================================================
+' 验证增强
+'==================================================
+
+'--------------------------------------------------
+' 增强的选择验证
+'--------------------------------------------------
+Private Function ValidateSelectionEnhanced(selectedRange As Range) As Boolean
+    ValidateSelectionEnhanced = False
+    
+    ' 基础验证
+    If selectedRange Is Nothing Then
+        ShowErrorMessage "请先选择需要优化的区域", Warning
         Exit Function
     End If
     
-    ' 处理挂起的事件
-    DoEvents
-    
-    ' 检测ESC键
-    If g_CancelOperation Then
-        If MsgBox("确定要取消当前操作吗？", vbYesNo + vbQuestion, "取消操作") = vbYes Then
-            CheckForCancel = True
-        Else
-            g_CancelOperation = False
-            CheckForCancel = False
-        End If
+    ' 工作表保护检查
+    If selectedRange.Worksheet.ProtectContents Then
+        ShowErrorMessage "工作表受保护，无法进行优化", Fatal
+        Exit Function
     End If
+    
+    ' 大小检查
+    Dim cellCount As Long
+    cellCount = selectedRange.Cells.Count
+    
+    If cellCount > MAX_CELLS_LIMIT Then
+        Dim response As VbMsgBoxResult
+        Dim prompt As String
+        prompt = "选择区域包含 " & Format(cellCount, "#,##0") & " 个单元格" & vbCrLf
+        prompt = prompt & "处理可能需要较长时间" & vbCrLf
+        prompt = prompt & "建议启用分块处理，是否继续？"
+        response = MsgBox(prompt, vbYesNo + vbQuestion, "Excel布局优化系统")
+        If response = vbNo Then Exit Function
+        
+        ' 自动启用分块处理
+        g_Config.ChunkProcessing = True
+    End If
+    
+    ' 合并单元格检查
+    If HasMergedCells(selectedRange) Then
+        Dim mergeResponse As VbMsgBoxResult
+        mergeResponse = MsgBox("检测到合并单元格，这些区域将被跳过。是否继续？", _
+                               vbYesNo + vbQuestion, "Excel布局优化系统")
+        If mergeResponse = vbNo Then Exit Function
+    End If
+    
+    ValidateSelectionEnhanced = True
 End Function
 
 '--------------------------------------------------
-' 带中断检测的列分析
+' 显示错误消息
 '--------------------------------------------------
-Function AnalyzeColumnsWithInterrupt(dataArray As Variant, targetRange As Range) As ColumnAnalysisData()
+Private Sub ShowErrorMessage(message As String, level As ErrorLevel)
+    Dim icon As VbMsgBoxStyle
+    
+    Select Case level
+        Case Fatal
+            icon = vbCritical
+        Case Severe
+            icon = vbExclamation
+        Case Warning
+            icon = vbInformation
+        Case Else
+            icon = vbInformation
+    End Select
+    
+    MsgBox message, icon, "Excel布局优化系统"
+End Sub
+
+'==================================================
+' 统计和报告增强
+'==================================================
+
+'--------------------------------------------------
+' 生成增强的统计信息
+'--------------------------------------------------
+Private Function GenerateEnhancedStatistics(targetRange As Range, processingTime As Double) As OptimizationStats
+    Dim stats As OptimizationStats
+    
+    stats.TotalColumns = targetRange.Columns.Count
+    stats.ProcessingTime = processingTime
+    stats.CacheHits = g_CacheHits
+    stats.ChunksProcessed = g_ChunksProcessed
+    
+    ' 其他统计信息通过遍历获取
+    Dim col As Long
+    For col = 1 To stats.TotalColumns
+        If targetRange.Columns(col).Hidden = False Then
+            stats.AdjustedColumns = stats.AdjustedColumns + 1
+            
+            If targetRange.Columns(col).WrapText Then
+                stats.WrapEnabledColumns = stats.WrapEnabledColumns + 1
+            End If
+        Else
+            stats.SkippedColumns = stats.SkippedColumns + 1
+        End If
+    Next col
+    
+    ' 错误单元格统计
+    Dim errorCount As Long
+    On Error Resume Next
+    errorCount = targetRange.SpecialCells(xlCellTypeFormulas, xlErrors).Count
+    On Error GoTo 0
+    stats.ErrorCount = errorCount
+    
+    GenerateEnhancedStatistics = stats
+End Function
+
+'--------------------------------------------------
+' 显示增强的完成消息
+'--------------------------------------------------
+Private Sub ShowCompletionMessageEnhanced(stats As OptimizationStats)
+    Dim message As String
+    
+    message = "优化完成！" & vbCrLf & vbCrLf
+    message = message & "【处理统计】" & vbCrLf
+    message = message & "• 处理列数：" & stats.TotalColumns & " 列" & vbCrLf
+    message = message & "• 调整列数：" & stats.AdjustedColumns & " 列" & vbCrLf
+    message = message & "• 启用换行：" & stats.WrapEnabledColumns & " 列" & vbCrLf
+    
+    If stats.SkippedColumns > 0 Then
+        message = message & "• 跳过列数：" & stats.SkippedColumns & " 列" & vbCrLf
+    End If
+    
+    message = message & vbCrLf & "【性能指标】" & vbCrLf
+    message = message & "• 处理时间：" & Format(stats.ProcessingTime, "0.00") & " 秒" & vbCrLf
+    
+    If g_Config.UseCache Then
+        message = message & "• 缓存命中：" & stats.CacheHits & " 次" & vbCrLf
+    End If
+    
+    If g_Config.ChunkProcessing And stats.ChunksProcessed > 0 Then
+        message = message & "• 处理块数：" & stats.ChunksProcessed & " 块" & vbCrLf
+    End If
+    
+    If stats.ErrorCount > 0 Then
+        message = message & vbCrLf & "【警告】" & vbCrLf
+        message = message & "• 错误单元格：" & stats.ErrorCount & " 个" & vbCrLf
+    End If
+    
+    message = message & vbCrLf & "提示：可使用 UndoLastOptimization 撤销本次操作"
+    
+    MsgBox message, vbInformation, "Excel布局优化系统"
+End Sub
+
+'==================================================
+' 测试套件
+'==================================================
+
+'--------------------------------------------------
+' 运行测试套件
+'--------------------------------------------------
+Public Sub RunTestSuite()
+    Debug.Print "=" & String(50, "=")
+    Debug.Print "Excel布局优化系统 - 测试套件"
+    Debug.Print "开始时间: " & Now
+    Debug.Print "=" & String(50, "=")
+    
+    Dim passCount As Long, failCount As Long
+    
+    ' 测试1：数据类型识别
+    If TestDataTypeDetection() Then
+        passCount = passCount + 1
+        Debug.Print "✓ 数据类型识别测试通过"
+    Else
+        failCount = failCount + 1
+        Debug.Print "✗ 数据类型识别测试失败"
+    End If
+    
+    ' 测试2：列宽计算
+    If TestColumnWidthCalculation() Then
+        passCount = passCount + 1
+        Debug.Print "✓ 列宽计算测试通过"
+    Else
+        failCount = failCount + 1
+        Debug.Print "✗ 列宽计算测试失败"
+    End If
+    
+    ' 测试3：缓存机制
+    If TestCacheMechanism() Then
+        passCount = passCount + 1
+        Debug.Print "✓ 缓存机制测试通过"
+    Else
+        failCount = failCount + 1
+        Debug.Print "✗ 缓存机制测试失败"
+    End If
+    
+    ' 测试4：配置管理
+    If TestConfigManagement() Then
+        passCount = passCount + 1
+        Debug.Print "✓ 配置管理测试通过"
+    Else
+        failCount = failCount + 1
+        Debug.Print "✗ 配置管理测试失败"
+    End If
+    
+    Debug.Print "=" & String(50, "=")
+    Debug.Print "测试完成: 通过 " & passCount & " | 失败 " & failCount
+    Debug.Print "结束时间: " & Now
+    Debug.Print "=" & String(50, "=")
+End Sub
+
+'--------------------------------------------------
+' 测试数据类型识别
+'--------------------------------------------------
+Private Function TestDataTypeDetection() As Boolean
+    On Error GoTo TestFailed
+    
+    ' 测试各种数据类型
+    Debug.Assert GetEnhancedDataType("Hello") = ShortText
+    Debug.Assert GetEnhancedDataType("这是一段很长的文本内容用于测试长文本识别功能") = LongText
+    Debug.Assert GetEnhancedDataType(123) = IntegerValue
+    Debug.Assert GetEnhancedDataType(123.45) = DecimalValue
+    Debug.Assert GetEnhancedDataType("50%") = PercentageValue
+    Debug.Assert GetEnhancedDataType("$100") = CurrencyValue
+    Debug.Assert GetEnhancedDataType(#1/1/2024#) = DateValue
+    Debug.Assert GetEnhancedDataType(True) = BooleanValue
+    
+    TestDataTypeDetection = True
+    Exit Function
+    
+TestFailed:
+    TestDataTypeDetection = False
+End Function
+
+'--------------------------------------------------
+' 测试列宽计算
+'--------------------------------------------------
+Private Function TestColumnWidthCalculation() As Boolean
+    On Error GoTo TestFailed
+    
+    ' 测试不同文本的宽度计算
+    Dim width1 As Double, width2 As Double, width3 As Double
+    
+    width1 = CalculateTextWidth("ABC", 11)
+    width2 = CalculateTextWidth("中文测试", 11)
+    width3 = CalculateTextWidth("123456", 11)
+    
+    Debug.Assert width1 > 0
+    Debug.Assert width2 > width1  ' 中文应该更宽
+    Debug.Assert width3 > 0
+    
+    TestColumnWidthCalculation = True
+    Exit Function
+    
+TestFailed:
+    TestColumnWidthCalculation = False
+End Function
+
+'--------------------------------------------------
+' 测试缓存机制
+'--------------------------------------------------
+Private Function TestCacheMechanism() As Boolean
+    On Error GoTo TestFailed
+    
+    ' 初始化缓存
+    InitializeCache
+    g_Config.UseCache = True
+    
+    ' 第一次调用（未命中）
+    Dim width1 As Double
+    width1 = GetCachedWidth("TestContent")
+    
+    ' 第二次调用（应该命中）
+    Dim width2 As Double
+    width2 = GetCachedWidth("TestContent")
+    
+    Debug.Assert width1 = width2
+    Debug.Assert g_CacheHits > 0
+    
+    ClearCache
+    TestCacheMechanism = True
+    Exit Function
+    
+TestFailed:
+    ClearCache
+    TestCacheMechanism = False
+End Function
+
+'--------------------------------------------------
+' 测试配置管理
+'--------------------------------------------------
+Private Function TestConfigManagement() As Boolean
+    On Error GoTo TestFailed
+    
+    ' 保存当前配置
+    Dim originalConfig As OptimizationConfig
+    originalConfig = g_Config
+    
+    ' 修改配置
+    g_Config.MaxColumnWidth = 75
+    g_Config.UseCache = False
+    
+    ' 保存和加载
+    SaveConfigToWorkbook
+    
+    ' 重置并重新加载
+    InitializeDefaultConfig
+    LoadConfigFromWorkbook
+    
+    ' 验证
+    Debug.Assert g_Config.MaxColumnWidth = 75
+    Debug.Assert g_Config.UseCache = False
+    
+    ' 恢复原始配置
+    g_Config = originalConfig
+    SaveConfigToWorkbook
+    
+    TestConfigManagement = True
+    Exit Function
+    
+TestFailed:
+    g_Config = originalConfig
+    TestConfigManagement = False
+End Function
+
+'==================================================
+' 辅助函数（保留原有的，增加新的）
+'==================================================
+
+'--------------------------------------------------
+' 分析所有列
+'--------------------------------------------------
+Private Function AnalyzeAllColumns(dataArray As Variant, targetRange As Range) As ColumnAnalysisData()
     Dim rowCount As Long, colCount As Long
     Dim col As Long
     
-    ' 获取数组维度
     If IsArray(dataArray) Then
         rowCount = UBound(dataArray, 1)
         colCount = UBound(dataArray, 2)
@@ -791,562 +1309,44 @@ Function AnalyzeColumnsWithInterrupt(dataArray As Variant, targetRange As Range)
         colCount = 1
     End If
     
-    ' 创建列分析数组
     Dim analyses() As ColumnAnalysisData
     ReDim analyses(1 To colCount)
     
-    ' 分析每一列
     For col = 1 To colCount
         ShowProgress 20 + (col - 1) * 30 / colCount, 100, "分析列 " & col & "/" & colCount
         
-        ' 检查中断
         If CheckForCancel() Then
             g_CancelOperation = True
-            AnalyzeColumnsWithInterrupt = analyses
+            AnalyzeAllColumns = analyses
             Exit Function
         End If
         
-        analyses(col) = AnalyzeColumn(dataArray, col, rowCount, targetRange.Columns(col))
+        analyses(col) = AnalyzeColumnEnhanced(dataArray, col, rowCount, targetRange.Columns(col))
     Next col
     
-    AnalyzeColumnsWithInterrupt = analyses
-End Function
-
-'==================================================
-' 验证和准备函数
-'==================================================
-
-'--------------------------------------------------
-' 验证用户选择的有效性
-'--------------------------------------------------
-Function ValidateSelection(selectedRange As Range) As Boolean
-    ValidateSelection = False
-    
-    ' 检查是否有选择
-    If selectedRange Is Nothing Then
-        MsgBox "请先选择需要优化的区域", vbExclamation, "Excel布局优化系统"
-        Exit Function
-    End If
-    
-    ' 检查选择大小
-    Dim cellCount As Long
-    cellCount = selectedRange.Cells.Count
-    
-    If cellCount > MAX_CELLS_LIMIT Then
-        Dim response As VbMsgBoxResult
-        Dim prompt As String
-        prompt = "选择区域包含 " & Format(cellCount, "#,##0") & " 个单元格，处理可能需要较长时间。是否继续？"
-        response = MsgBox(prompt, vbYesNo + vbQuestion, "Excel布局优化系统")
-        If response = vbNo Then Exit Function
-    End If
-    
-    ' 检查工作表保护
-    If selectedRange.Worksheet.ProtectContents Then
-        MsgBox "工作表受保护，无法进行优化", vbExclamation, "Excel布局优化系统"
-        Exit Function
-    End If
-    
-    ' 检查合并单元格
-    If HasMergedCells(selectedRange) Then
-        Dim mergeResponse As VbMsgBoxResult
-        Dim mergePrompt As String
-        mergePrompt = "选择区域包含合并单元格，这些区域将被跳过。是否继续？"
-        mergeResponse = MsgBox(mergePrompt, vbYesNo + vbQuestion, "Excel布局优化系统")
-        If mergeResponse = vbNo Then Exit Function
-    End If
-    
-    ValidateSelection = True
+    AnalyzeAllColumns = analyses
 End Function
 
 '--------------------------------------------------
-' 批量数据读取（性能优化核心）
+' 应用优化到块
 '--------------------------------------------------
-Function ReadRangeToArray(targetRange As Range) As Variant
-    ' 一次性读取，避免循环访问单元格
-    Dim dataArray As Variant
-    
-    ' 使用Value2属性获取原始值（更快）
-    dataArray = targetRange.Value2
-    
-    ' 处理单个单元格的情况
-    If Not IsArray(dataArray) Then
-        Dim tempArray(1 To 1, 1 To 1) As Variant
-        tempArray(1, 1) = dataArray
-        dataArray = tempArray
-    End If
-    
-    ReadRangeToArray = dataArray
-End Function
-
-'==================================================
-' 数据分析函数
-'==================================================
-
-'--------------------------------------------------
-' 分析单个列的数据特征
-'--------------------------------------------------
-Function AnalyzeColumn(dataArray As Variant, columnIndex As Long, rowCount As Long, columnRange As Range) As ColumnAnalysisData
-    Dim analysis As ColumnAnalysisData
-    Dim row As Long
-    Dim cellValue As Variant
-    Dim cellDataType As DataType
-    Dim cellWidth As Double
-    Dim maxWidth As Double
-    Dim typeCounts(1 To 6) As Long
-    
-    ' 初始化
-    analysis.ColumnIndex = columnIndex
-    analysis.CellCount = 0
-    analysis.HasMergedCells = HasMergedCells(columnRange)
-    analysis.HasErrors = False
-    maxWidth = 0
-    
-    ' 如果包含合并单元格，跳过分析
-    If analysis.HasMergedCells Then
-        analysis.DataType = TextValue
-        analysis.MaxContentWidth = 0
-        analysis.OptimalWidth = 0
-        analysis.NeedWrap = False
-        AnalyzeColumn = analysis
-        Exit Function
-    End If
-    
-    ' 分析每个单元格
-    For row = 1 To rowCount
-        If IsArray(dataArray) And UBound(dataArray, 2) >= columnIndex Then
-            cellValue = dataArray(row, columnIndex)
-        Else
-            cellValue = dataArray
-        End If
-        
-        If Not IsEmpty(cellValue) And cellValue <> "" Then
-            analysis.CellCount = analysis.CellCount + 1
-            
-            ' 获取数据类型
-            cellDataType = GetCellDataType(cellValue)
-            typeCounts(cellDataType) = typeCounts(cellDataType) + 1
-            
-            ' 检查错误值
-            If cellDataType = ErrorValue Then
-                analysis.HasErrors = True
-            End If
-            
-            ' 计算单元格宽度
-            If cellDataType <> ErrorValue Then
-                cellWidth = CalculateTextWidth(SafeGetCellValue(cellValue), 11)
-                If cellWidth > maxWidth Then
-                    maxWidth = cellWidth
-                End If
-            End If
-        End If
-    Next row
-    
-    ' 确定列的主导数据类型
-    analysis.DataType = DetermineColumnType(typeCounts)
-    
-    ' 计算最优列宽
-    analysis.MaxContentWidth = maxWidth
-    Dim widthResult As WidthResult
-    widthResult = CalculateOptimalWidth(maxWidth, analysis.DataType)
-    analysis.OptimalWidth = widthResult.FinalWidth
-    analysis.NeedWrap = widthResult.NeedWrap
-    
-    AnalyzeColumn = analysis
-End Function
-
-'--------------------------------------------------
-' 判断单个单元格的数据类型
-'--------------------------------------------------
-Function GetCellDataType(cellValue As Variant) As DataType
-    ' 优先级顺序：错误值 > 空值 > 日期 > 数值 > 文本
-    
-    ' 1. 错误值检测（最高优先级）
-    If IsError(cellValue) Then
-        GetCellDataType = ErrorValue
-        Exit Function
-    End If
-    
-    ' 2. 空值检测
-    If IsEmpty(cellValue) Or cellValue = "" Then
-        GetCellDataType = EmptyCell
-        Exit Function
-    End If
-    
-    ' 3. 日期检测（必须在数值检测之前）
-    If IsDate(cellValue) Then
-        ' 额外验证：Excel日期序列号范围 1-2958465
-        If IsNumeric(cellValue) Then
-            Dim numValue As Double
-            numValue = CDbl(cellValue)
-            If numValue >= MIN_EXCEL_DATE And numValue <= MAX_EXCEL_DATE Then
-                GetCellDataType = DateValue
-                Exit Function
-            End If
-        End If
-        GetCellDataType = DateValue
-        Exit Function
-    End If
-    
-    ' 4. 数值检测
-    If IsNumeric(cellValue) Then
-        GetCellDataType = NumericValue
-        Exit Function
-    End If
-    
-    ' 5. 默认为文本
-    GetCellDataType = TextValue
-End Function
-
-'--------------------------------------------------
-' 确定列的主导数据类型
-'--------------------------------------------------
-Function DetermineColumnType(typeCounts() As Long) As DataType
-    Dim maxCount As Long
-    Dim dominantType As DataType
-    Dim i As Long
-    
-    ' 找出主导类型（忽略空值和错误值）
-    maxCount = 0
-    dominantType = TextValue  ' 默认文本
-    
-    For i = 1 To 6
-        ' 跳过空值和错误值
-        If i <> EmptyCell And i <> ErrorValue Then
-            If typeCounts(i) > maxCount Then
-                maxCount = typeCounts(i)
-                dominantType = i
-            End If
-        End If
-    Next i
-    
-    ' 特殊规则：如果有任何文本，整列按文本处理
-    If typeCounts(TextValue) > 0 Then
-        dominantType = TextValue
-    End If
-    
-    DetermineColumnType = dominantType
-End Function
-
-'==================================================
-' 宽度计算函数
-'==================================================
-
-'--------------------------------------------------
-' 计算文本显示宽度
-'--------------------------------------------------
-Function CalculateTextWidth(text As String, fontSize As Single) As Double
-    Dim charCounts As CharCount
-    Dim pixelWidth As Double
-    Dim chineseWidth As Double
-    Dim englishWidth As Double
-    Dim numberWidth As Double
-    Dim otherWidth As Double
-    
-    ' 统计各类字符
-    charCounts = CountCharTypes(text)
-    
-    ' 分别计算各类字符的像素宽度
-    chineseWidth = charCounts.ChineseCount * CHINESE_CHAR_WIDTH_FACTOR
-    englishWidth = charCounts.EnglishCount * ENGLISH_CHAR_WIDTH_FACTOR
-    numberWidth = charCounts.NumberCount * NUMBER_CHAR_WIDTH_FACTOR
-    otherWidth = charCounts.OtherCount * OTHER_CHAR_WIDTH_FACTOR
-    
-    ' 计算总像素宽度
-    pixelWidth = (chineseWidth + englishWidth + numberWidth + otherWidth) * fontSize
-    
-    ' 转换为字符单位
-    CalculateTextWidth = pixelWidth / PIXELS_PER_CHAR_UNIT
-End Function
-
-'--------------------------------------------------
-' 统计字符类型
-'--------------------------------------------------
-Function CountCharTypes(text As String) As CharCount
-    Dim result As CharCount
-    Dim i As Long
-    Dim charCode As Long
-    
-    For i = 1 To Len(text)
-        charCode = AscW(Mid(text, i, 1))
-        
-        If charCode >= &H4E00 And charCode <= &H9FFF Then
-            ' 中文字符 (CJK统一汉字)
-            result.ChineseCount = result.ChineseCount + 1
-        ElseIf charCode >= 48 And charCode <= 57 Then
-            ' 数字 (0-9)
-            result.NumberCount = result.NumberCount + 1
-        ElseIf (charCode >= 65 And charCode <= 90) Or (charCode >= 97 And charCode <= 122) Then
-            ' 英文字母 (A-Z, a-z)
-            result.EnglishCount = result.EnglishCount + 1
-        Else
-            ' 其他字符（标点、符号等）
-            result.OtherCount = result.OtherCount + 1
-        End If
-    Next i
-    
-    result.TotalCount = result.ChineseCount + result.EnglishCount + result.NumberCount + result.OtherCount
-    CountCharTypes = result
-End Function
-
-'--------------------------------------------------
-' 计算最优列宽（使用配置）
-'--------------------------------------------------
-Function CalculateOptimalWidth(contentWidth As Double, dataType As DataType) As WidthResult
-    Dim result As WidthResult
-    Dim buffer As Double
-    Dim calculatedWidth As Double
-    
-    ' 确保配置已初始化
-    If Not g_ConfigInitialized Then
-        InitializeDefaultConfig
-    End If
-    
-    ' 根据数据类型确定缓冲区
-    Select Case dataType
-        Case TextValue
-            buffer = g_Config.TextBuffer
-        Case NumericValue
-            buffer = g_Config.NumericBuffer
-        Case DateValue
-            buffer = g_Config.NumericBuffer
-        Case Else
-            buffer = g_Config.TextBuffer
-    End Select
-    
-    ' 计算基础宽度
-    calculatedWidth = contentWidth + buffer
-    result.OriginalWidth = calculatedWidth
-    
-    ' 应用边界控制
-    If calculatedWidth < g_Config.MinColumnWidth Then
-        result.FinalWidth = g_Config.MinColumnWidth
-        result.NeedWrap = False
-        
-    ElseIf calculatedWidth >= g_Config.MaxColumnWidth Then
-        result.FinalWidth = g_Config.MaxColumnWidth
-        result.NeedWrap = True  ' 标记需要自动换行
-        
-    Else
-        result.FinalWidth = calculatedWidth
-        result.NeedWrap = False
-    End If
-    
-    CalculateOptimalWidth = result
-End Function
-
-'==================================================
-' 格式应用函数
-'==================================================
-
-'--------------------------------------------------
-' 应用列宽优化
-'--------------------------------------------------
-Sub ApplyColumnWidthOptimization(targetRange As Range, columnAnalyses() As ColumnAnalysisData)
+Private Sub ApplyOptimizationToChunk(chunkRange As Range, columnAnalyses() As ColumnAnalysisData)
     Dim col As Long
     
     For col = 1 To UBound(columnAnalyses)
-        ' 跳过包含合并单元格的列
         If Not columnAnalyses(col).HasMergedCells And columnAnalyses(col).OptimalWidth > 0 Then
-            targetRange.Columns(col).ColumnWidth = columnAnalyses(col).OptimalWidth
-        End If
-    Next col
-End Sub
-
-'--------------------------------------------------
-' 应用对齐优化（考虑表头）
-'--------------------------------------------------
-Sub ApplyAlignmentOptimizationWithHeader(targetRange As Range, columnAnalyses() As ColumnAnalysisData, hasHeader As Boolean)
-    Dim col As Long
-    Dim startRow As Long
-    
-    If hasHeader Then
-        ' 处理表头（第一行）- 统一居中
-        For col = 1 To UBound(columnAnalyses)
-            If Not columnAnalyses(col).HasMergedCells Then
-                With targetRange.Cells(1, col)
-                    .HorizontalAlignment = xlCenter
-                    .VerticalAlignment = xlCenter
-                End With
+            ' 只在第一个块时设置列宽
+            If chunkRange.Row = chunkRange.Parent.UsedRange.Row Then
+                chunkRange.Columns(col).EntireColumn.ColumnWidth = columnAnalyses(col).OptimalWidth
             End If
-        Next col
-        startRow = 2
-    Else
-        startRow = 1
-    End If
-    
-    ' 处理数据行
-    If targetRange.Rows.Count >= startRow Then
-        For col = 1 To UBound(columnAnalyses)
-            If Not columnAnalyses(col).HasMergedCells Then
-                Dim dataRange As Range
-                Set dataRange = targetRange.Cells(startRow, col).Resize(targetRange.Rows.Count - startRow + 1, 1)
-                ApplyAlignment dataRange, columnAnalyses(col).DataType, False
-            End If
-        Next col
-    End If
-End Sub
-
-'--------------------------------------------------
-' 应用对齐设置
-'--------------------------------------------------
-Sub ApplyAlignment(targetRange As Range, dataType As DataType, isHeader As Boolean)
-    Dim settings As AlignmentSettings
-    settings = GetAlignmentForDataType(dataType, isHeader)
-    
-    ' 批量应用，提高性能
-    With targetRange
-        If settings.Horizontal <> xlGeneral Then
-            .HorizontalAlignment = settings.Horizontal
-        End If
-        If settings.Vertical <> xlBottom Then
-            .VerticalAlignment = settings.Vertical
-        End If
-    End With
-End Sub
-
-'--------------------------------------------------
-' 获取数据类型对应的对齐方式
-'--------------------------------------------------
-Function GetAlignmentForDataType(dataType As DataType, isHeader As Boolean) As AlignmentSettings
-    Dim settings As AlignmentSettings
-    
-    If isHeader Then
-        ' 表头统一居中
-        settings.Horizontal = xlCenter
-        settings.Vertical = xlCenter
-    Else
-        Select Case dataType
-            Case TextValue
-                settings.Horizontal = xlLeft
-                settings.Vertical = xlCenter
-                
-            Case NumericValue, DateValue
-                settings.Horizontal = xlRight
-                settings.Vertical = xlCenter
-                
-            Case EmptyCell
-                ' 保持默认，不修改
-                settings.Horizontal = xlGeneral
-                settings.Vertical = xlBottom
-                
-            Case Else
-                ' 其他情况保持默认
-                settings.Horizontal = xlGeneral
-                settings.Vertical = xlCenter
-        End Select
-    End If
-    
-    GetAlignmentForDataType = settings
-End Function
-
-'--------------------------------------------------
-' 应用换行和行高调整
-'--------------------------------------------------
-Sub ApplyWrapAndRowHeight(targetRange As Range, columnAnalyses() As ColumnAnalysisData)
-    Dim col As Long
-    Dim needRowHeightAdjust As Boolean
-    
-    needRowHeightAdjust = False
-    
-    ' 设置需要换行的列
-    For col = 1 To UBound(columnAnalyses)
-        If Not columnAnalyses(col).HasMergedCells And columnAnalyses(col).NeedWrap Then
-            targetRange.Columns(col).WrapText = True
-            needRowHeightAdjust = True
-        End If
-    Next col
-    
-    ' 如果有列启用了换行，调整行高
-    If needRowHeightAdjust Then
-        AdjustRowHeightForWrap targetRange
-    End If
-End Sub
-
-'--------------------------------------------------
-' 调整行高以适应换行
-'--------------------------------------------------
-Sub AdjustRowHeightForWrap(targetRange As Range)
-    Dim row As Range
-    Application.ScreenUpdating = False
-    
-    ' 逐行调整，避免影响未选择区域
-    For Each row In targetRange.Rows
-        row.EntireRow.AutoFit
-        
-        ' 设置最小和最大行高限制
-        If row.RowHeight < MIN_ROW_HEIGHT Then
-            row.RowHeight = MIN_ROW_HEIGHT
-        ElseIf row.RowHeight > MAX_ROW_HEIGHT Then
-            row.RowHeight = MAX_ROW_HEIGHT
-        End If
-    Next row
-    
-    Application.ScreenUpdating = True
-End Sub
-
-'==================================================
-' 辅助工具函数
-'==================================================
-
-'--------------------------------------------------
-' 安全获取单元格值
-'--------------------------------------------------
-Function SafeGetCellValue(cellValue As Variant) As String
-    On Error Resume Next
-    
-    If IsError(cellValue) Then
-        SafeGetCellValue = ""  ' 错误值返回空字符串
-    ElseIf IsNull(cellValue) Then
-        SafeGetCellValue = ""
-    ElseIf IsEmpty(cellValue) Then
-        SafeGetCellValue = ""
-    Else
-        SafeGetCellValue = CStr(cellValue)
-    End If
-    
-    On Error GoTo 0
-End Function
-
-'--------------------------------------------------
-' 检测是否包含合并单元格
-'--------------------------------------------------
-Function HasMergedCells(checkRange As Range) As Boolean
-    Dim cell As Range
-    
-    On Error Resume Next
-    For Each cell In checkRange
-        If cell.MergeCells Then
-            HasMergedCells = True
-            Exit Function
-        End If
-    Next cell
-    On Error GoTo 0
-    
-    HasMergedCells = False
-End Function
-
-'--------------------------------------------------
-' 生成优化统计信息
-'--------------------------------------------------
-Function GenerateStatistics(columnAnalyses() As ColumnAnalysisData, processingTime As Double) As OptimizationStats
-    Dim stats As OptimizationStats
-    Dim col As Long
-    
-    stats.TotalColumns = UBound(columnAnalyses)
-    stats.ProcessingTime = processingTime
-    
-    For col = 1 To UBound(columnAnalyses)
-        If columnAnalyses(col).HasMergedCells Then
-            stats.SkippedColumns = stats.SkippedColumns + 1
-        Else
-            stats.AdjustedColumns = stats.AdjustedColumns + 1
             
+            ' 设置对齐和换行
             If columnAnalyses(col).NeedWrap Then
-                stats.WrapEnabledColumns = stats.WrapEnabledColumns + 1
+                chunkRange.Columns(col).WrapText = True
             End If
         End If
-        
-        If columnAnalyses(col).HasErrors Then
+    Next col
+End Sub
             stats.ErrorCount = stats.ErrorCount + 1
         End If
     Next col
