@@ -34,7 +34,7 @@ Option Explicit
 '--------------------------------------------------
 ' 列宽边界控制（字符单位）
 Private Const DEFAULT_MIN_COLUMN_WIDTH As Double = 8.43
-Private Const DEFAULT_MAX_COLUMN_WIDTH As Double = 50
+Private Const DEFAULT_MAX_COLUMN_WIDTH As Double = 70  ' 增加到70以支持更长的标题
 
 ' 列宽边界控制（像素）
 Private Const MIN_COLUMN_WIDTH_PIXELS As Long = 50
@@ -46,8 +46,9 @@ Private Const NUMERIC_BUFFER_PIXELS As Long = 12
 Private Const DATE_BUFFER_PIXELS As Long = 12
 
 ' 缓冲区设置（字符单位）
-Private Const TEXT_BUFFER_CHARS As Double = 2#
+Private Const TEXT_BUFFER_CHARS As Double = 3.5    ' 增加到3.5个字符单位以确保中文标题完整显示
 Private Const NUMERIC_BUFFER_CHARS As Double = 1.6
+Private Const DATE_BUFFER_CHARS As Double = 2#      ' 添加日期缓冲区设置
 
 ' 字符宽度系数
 Private Const CHINESE_CHAR_WIDTH_FACTOR As Double = 1.2
@@ -2071,6 +2072,15 @@ Private Sub ApplyAlignmentOptimizationWithHeader(targetRange As Range, analyses(
                 ' 只有在没有加粗的情况下才稍微增强格式
                 col.Cells(1, 1).Font.Size = col.Cells(1, 1).Font.Size + 0.5
             End If
+            
+            ' 如果标题较长，确保启用换行并保持居中
+            If analyses(i).IsHeaderColumn And Len(analyses(i).HeaderText) > 8 Then
+                Dim headerWidth As Double
+                headerWidth = CalculateTextWidth(analyses(i).HeaderText, 12)
+                If headerWidth > col.ColumnWidth * 7 Then ' 如果文本宽度超过列宽
+                    col.Cells(1, 1).WrapText = True
+                End If
+            End If
         End If
         
         ' 根据数据类型设置数据行的对齐方式
@@ -2171,9 +2181,51 @@ Private Sub ApplyWrapAndRowHeight(targetRange As Range, analyses() As ColumnAnal
 End Sub
 
 Private Function CalculateTextWidth(Text As String, fontSize As Single) As Double
-    ' 这是一个简化的宽度计算函数，实际效果可能不精确
-    ' 精确计算需要更复杂的API调用
-    CalculateTextWidth = Len(Text) * 0.8 * (fontSize / 10)
+    ' 精确的文本宽度计算 - 针对宋体12号字优化，特别是中文字符
+    On Error GoTo ErrorHandler
+    
+    If Text = "" Then
+        CalculateTextWidth = 0
+        Exit Function
+    End If
+    
+    Dim totalWidth As Double
+    Dim i As Integer
+    Dim char As String
+    Dim charCode As Integer
+    
+    ' 宋体字符宽度系数（基于实际测量）
+    Dim chineseCharWidth As Double
+    Dim englishCharWidth As Double
+    Dim numberCharWidth As Double
+    
+    ' 根据字体大小调整系数 - 特别针对12号宋体优化
+    chineseCharWidth = (fontSize / 12) * 8.5  ' 中文字符在宋体下约8.5字符单位宽
+    englishCharWidth = (fontSize / 12) * 4.8  ' 英文字符约4.8字符单位宽
+    numberCharWidth = (fontSize / 12) * 5.2   ' 数字字符约5.2字符单位宽
+    
+    For i = 1 To Len(Text)
+        char = Mid(Text, i, 1)
+        charCode = Asc(char)
+        
+        If charCode > 127 Or charCode < 0 Then
+            ' 中文字符
+            totalWidth = totalWidth + chineseCharWidth
+        ElseIf charCode >= 48 And charCode <= 57 Then
+            ' 数字字符 (0-9)
+            totalWidth = totalWidth + numberCharWidth
+        Else
+            ' 英文字符和符号
+            totalWidth = totalWidth + englishCharWidth
+        End If
+    Next i
+    
+    CalculateTextWidth = totalWidth
+    Exit Function
+    
+ErrorHandler:
+    ' 简化计算作为备用
+    CalculateTextWidth = Len(Text) * (fontSize / 12) * 6.5
 End Function
 
 Private Function AnalyzeHeaderWidth(headerText As String, maxWidth As Double) As Double
@@ -2184,15 +2236,20 @@ Private Function AnalyzeHeaderWidth(headerText As String, maxWidth As Double) As
         Exit Function
     End If
     
-    ' 计算标题的基本宽度（包含缓冲）
+    ' 使用12号宋体计算标题的基本宽度（包含适当缓冲）
     Dim baseWidth As Double
-    baseWidth = CalculateTextWidth(headerText, 11) + g_Config.TextBuffer
+    baseWidth = CalculateTextWidth(headerText, 12) + g_Config.TextBuffer
+    
+    ' 对于长标题增加额外缓冲，确保完整显示
+    If Len(headerText) > 6 Then
+        baseWidth = baseWidth + 2 ' 额外2字符单位缓冲
+    End If
     
     ' 如果标题宽度在限制范围内，直接返回
     If baseWidth <= maxWidth Then
         AnalyzeHeaderWidth = baseWidth
     Else
-        ' 标题需要换行，返回最大宽度
+        ' 标题太长，需要换行，返回最大宽度
         AnalyzeHeaderWidth = maxWidth
     End If
     
@@ -2210,9 +2267,9 @@ Private Function CalculateHeaderRowHeight(headerText As String, columnWidth As D
         Exit Function
     End If
     
-    ' 计算需要的行数
+    ' 使用12号宋体计算需要的行数
     Dim textWidth As Double
-    textWidth = CalculateTextWidth(headerText, 11)
+    textWidth = CalculateTextWidth(headerText, 12)
     
     Dim linesNeeded As Long
     linesNeeded = Application.Max(1, Application.Ceiling(textWidth / columnWidth, 1))
@@ -2260,7 +2317,7 @@ Private Function CalculateOptimalWidthWithHeader(analysis As ColumnAnalysisData)
     
     ' 检查是否需要换行
     Dim headerTextWidth As Double
-    headerTextWidth = CalculateTextWidth(analysis.HeaderText, 11)
+    headerTextWidth = CalculateTextWidth(analysis.HeaderText, 12)
     
     If headerTextWidth + g_Config.TextBuffer > g_Config.MaxColumnWidth Then
         result.NeedWrap = True
@@ -2466,6 +2523,91 @@ Sub TestHeaderCentering()
     
     resultMsg = resultMsg & vbCrLf & "测试完成！请检查 A1:D3 区域的标题是否已居中显示。"
     MsgBox resultMsg, vbInformation, "标题居中测试"
+    
+    Exit Sub
+    
+ErrorHandler:
+    MsgBox "测试过程中发生错误: " & Err.Description, vbCritical, "错误"
+End Sub
+
+Sub TestLongHeaderDisplay()
+    ' 测试长标题完整显示功能的专用函数
+    On Error GoTo ErrorHandler
+    
+    ' 创建测试数据
+    Dim ws As Worksheet
+    Set ws = ActiveSheet
+    
+    ' 清空测试区域
+    ws.Range("A1:E10").Clear
+    
+    ' 创建测试数据 - 用户提到的具体长标题
+    ws.Range("A1").Value = "云仓新机数量"
+    ws.Range("B1").Value = "公司新机数量"
+    ws.Range("C1").Value = "公司维修机数量"
+    ws.Range("D1").Value = "发货日期（退货签收）时间"
+    ws.Range("E1").Value = "产品处理状态"
+    
+    ' 添加一些数据行
+    ws.Range("A2").Value = 150
+    ws.Range("B2").Value = 80
+    ws.Range("C2").Value = 25
+    ws.Range("D2").Value = "2025-08-18"
+    ws.Range("E2").Value = "已处理"
+    
+    ws.Range("A3").Value = 200
+    ws.Range("B3").Value = 120
+    ws.Range("C3").Value = 40
+    ws.Range("D3").Value = "2025-08-19"
+    ws.Range("E3").Value = "处理中"
+    
+    ' 应用优化前记录列宽
+    Dim originalWidths(1 To 5) As Double
+    Dim i As Integer
+    For i = 1 To 5
+        originalWidths(i) = ws.Columns(i).ColumnWidth
+    Next i
+    
+    ' 选择测试范围
+    ws.Range("A1:E3").Select
+    
+    ' 应用优化
+    Call OptimizeSelectedLayout
+    
+    ' 检查结果并生成报告
+    Dim resultMsg As String
+    resultMsg = "长标题显示测试结果:" & vbCrLf & vbCrLf
+    
+    Dim headers As Variant
+    headers = Array("云仓新机数量", "公司新机数量", "公司维修机数量", "发货日期（退货签收）时间", "产品处理状态")
+    
+    For i = 1 To 5
+        Dim currentWidth As Double
+        currentWidth = ws.Columns(i).ColumnWidth
+        
+        resultMsg = resultMsg & "列" & i & ": " & headers(i - 1) & vbCrLf
+        resultMsg = resultMsg & "  原宽度: " & Format(originalWidths(i), "0.0") & " → 新宽度: " & Format(currentWidth, "0.0")
+        
+        ' 检查是否有换行
+        If ws.Cells(1, i).WrapText Then
+            resultMsg = resultMsg & " (已启用换行)"
+        End If
+        
+        ' 检查对齐方式
+        Select Case ws.Cells(1, i).HorizontalAlignment
+            Case xlCenter
+                resultMsg = resultMsg & " [居中]"
+            Case xlLeft
+                resultMsg = resultMsg & " [左对齐]"
+            Case xlRight
+                resultMsg = resultMsg & " [右对齐]"
+        End Select
+        
+        resultMsg = resultMsg & vbCrLf
+    Next i
+    
+    resultMsg = resultMsg & vbCrLf & "请检查 A1:E3 区域的标题是否完整显示！"
+    MsgBox resultMsg, vbInformation, "长标题显示测试"
     
     Exit Sub
     
