@@ -9,6 +9,7 @@
 6. [智能表头识别](#6-智能表头识别)
 7. [中断机制实现](#7-中断机制实现)
 8. [核心算法优化](#8-核心算法优化)
+9. [超长文本处理机制](#9-超长文本处理机制)
 
 ---
 
@@ -1063,3 +1064,132 @@ End Sub
 ---
 **更新日期**：2025年8月  
 **更新内容**：增加性能优化、智能识别和测试策略章节
+
+---
+
+## 9. 超长文本处理机制（新增）
+
+### 9.1 文本长度分级
+
+#### 9.1.1 文本分类标准
+```vba
+Private Enum TextLengthCategory
+    ShortText = 1      ' <= 20字符
+    MediumText = 2     ' 21-50字符
+    LongText = 3       ' 51-100字符
+    VeryLongText = 4   ' 101-200字符
+    ExtremeText = 5    ' > 200字符
+End Enum
+```
+
+#### 9.1.2 分级处理策略
+| 分类 | 字符范围 | 列宽策略 | 换行策略 |
+|------|---------|----------|----------|
+| 短文本 | ≤20 | 内容宽度+缓冲 | 不换行 |
+| 中等文本 | 21-50 | 内容宽度+缓冲（上限70） | 可选换行 |
+| 长文本 | 51-100 | 扩展至100 | 建议换行 |
+| 超长文本 | 101-200 | 固定120 | 强制换行 |
+| 极长文本 | >200 | 固定120 | 强制多行换行 |
+
+### 9.2 智能断行算法
+
+#### 9.2.1 断点识别
+```vba
+Private Function FindBreakPoints(text As String) As Collection
+    Dim breaks As New Collection
+    Dim i As Long
+    
+    ' 优先级1：中文标点
+    Dim cnPunctuations As String
+    cnPunctuations = "，。；！？、"
+    
+    ' 优先级2：英文标点
+    Dim enPunctuations As String
+    enPunctuations = ",.;!? "
+    
+    ' 优先级3：数字分隔
+    ' 在"数字+单位"后断行
+    
+    For i = 1 To Len(text)
+        Dim char As String
+        char = Mid(text, i, 1)
+        
+        ' 检查是否为断点
+        If InStr(cnPunctuations & enPunctuations, char) > 0 Then
+            breaks.Add i
+        End If
+    Next i
+    
+    Set FindBreakPoints = breaks
+End Function
+```
+
+#### 9.2.2 智能换行决策
+```vba
+Private Function CalculateWrapLayout(text As String, maxWidth As Double) As WrapLayout
+    Dim layout As WrapLayout
+    Dim breaks As Collection
+    Set breaks = FindBreakPoints(text)
+    
+    ' 计算理想行数
+    Dim totalWidth As Double
+    totalWidth = CalculateTextWidth(text, 11)
+    layout.IdealLines = Ceiling(totalWidth / maxWidth)
+    
+    ' 分配文本到各行
+    Dim lines As Collection
+    Set lines = DistributeTextToLines(text, breaks, maxWidth)
+    
+    layout.ActualLines = lines.Count
+    layout.RequiredHeight = CalculateRequiredHeight(lines.Count)
+    
+    CalculateWrapLayout = layout
+End Function
+```
+
+### 9.3 行高动态计算
+
+#### 9.3.1 行高计算公式
+```vba
+Private Function CalculateOptimalRowHeight(text As String, columnWidth As Double) As Double
+    Dim baseHeight As Double
+    baseHeight = 15 ' 基础行高
+    
+    ' 计算需要的行数
+    Dim textWidth As Double
+    textWidth = CalculateTextWidth(text, 11)
+    
+    Dim lines As Long
+    lines = Application.WorksheetFunction.Ceiling(textWidth / (columnWidth * 7.5), 1)
+    
+    ' 限制最大行数
+    If lines > 11 Then lines = 11
+    
+    ' 计算总高度（包含行间距）
+    Dim totalHeight As Double
+    totalHeight = baseHeight + (lines - 1) * 18
+    
+    ' 应用最大高度限制
+    If totalHeight > 200 Then totalHeight = 200
+    
+    CalculateOptimalRowHeight = totalHeight
+End Function
+```
+
+### 9.4 性能优化策略
+
+#### 9.4.1 文本宽度缓存增强
+```vba
+Private Type TextWidthCache
+    Text As String
+    Width As Double
+    Category As TextLengthCategory
+    BreakPoints As String ' 缓存断点位置
+    Hits As Long
+End Type
+```
+
+#### 9.4.2 批量处理优化
+- 对超长文本列单独处理，避免影响其他列
+- 使用异步计算避免界面卡顿
+- 提供进度反馈
