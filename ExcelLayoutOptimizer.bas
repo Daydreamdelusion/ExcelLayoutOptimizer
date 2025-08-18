@@ -1,4 +1,3 @@
-Attribute VB_Name = "ExcelLayoutOptimizer"
 '==================================================
 ' Excel智能布局优化系统 v3.1
 '
