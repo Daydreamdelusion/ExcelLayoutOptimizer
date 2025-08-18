@@ -41,6 +41,12 @@ Option Explicit
 Private Const DEFAULT_MIN_COLUMN_WIDTH As Double = 8.43
 Private Const DEFAULT_MAX_COLUMN_WIDTH As Double = 70  ' 增加到70以支持更长的标题
 
+' 超长文本处理常量（新增）
+Private Const EXTREME_TEXT_WIDTH As Double = 120        ' 极长文本固定宽度
+Private Const LONG_TEXT_THRESHOLD As Long = 100         ' 长文本阈值（字符数）
+Private Const VERY_LONG_TEXT_THRESHOLD As Long = 200    ' 极长文本阈值（字符数）
+Private Const MAX_WRAP_LINES As Long = 10               ' 最大换行行数
+
 ' 列宽边界控制（像素）
 Private Const MIN_COLUMN_WIDTH_PIXELS As Long = 50
 Private Const MAX_COLUMN_WIDTH_PIXELS As Long = 300
@@ -100,6 +106,15 @@ Public Enum DataType
     MixedContent = 15
 End Enum
 
+' 文本长度分级枚举（新增）
+Public Enum TextLengthCategory
+    ShortText = 1      ' <= 20字符
+    MediumText = 2     ' 21-50字符
+    LongText = 3       ' 51-100字符
+    VeryLongText = 4   ' 101-200字符
+    ExtremeText = 5    ' > 200字符
+End Enum
+
 ' 错误级别枚举
 Public Enum ErrorLevel
     Fatal = 1
@@ -122,6 +137,14 @@ Private Type WidthResult
     FinalWidth As Double
     NeedWrap As Boolean
     OriginalWidth As Double
+End Type
+
+' 智能换行布局结果
+Private Type WrapLayout
+    TotalLines As Long
+    OptimalRowHeight As Double
+    BreakPoints() As Long
+    NeedWrap As Boolean
 End Type
 
 ' 对齐设置
@@ -177,6 +200,12 @@ Private Type OptimizationConfig
     HeaderPriority As Boolean  ' 标题优先模式
     HeaderMaxWrapLines As Long ' 标题最大换行数
     HeaderMinHeight As Double  ' 标题最小行高
+    ' 超长文本处理配置（新增）
+    ExtremeTextWidth As Double     ' 极长文本固定宽度
+    LongTextThreshold As Long      ' 长文本阈值（字符数）
+    SmartLineBreak As Boolean      ' 智能断行开关
+    MaxWrapLines As Long          ' 最大换行行数
+    LongTextExtendThreshold As Long ' 长文本扩展阈值
 End Type
 
 ' 单元格格式信息
@@ -1009,6 +1038,12 @@ Private Sub InitializeDefaultConfig()
         .HeaderPriority = True      ' 启用标题优先模式
         .HeaderMaxWrapLines = 3     ' 标题最大换行3行
         .HeaderMinHeight = 15       ' 标题最小行高
+        ' 超长文本处理配置（新增）
+        .ExtremeTextWidth = EXTREME_TEXT_WIDTH       ' 极长文本固定宽度
+        .LongTextThreshold = LONG_TEXT_THRESHOLD     ' 长文本阈值
+        .SmartLineBreak = True                       ' 启用智能断行
+        .MaxWrapLines = MAX_WRAP_LINES              ' 最大换行行数
+        .LongTextExtendThreshold = LONG_TEXT_THRESHOLD ' 长文本扩展阈值
     End With
     g_ConfigInitialized = True
 End Sub
@@ -1276,7 +1311,16 @@ Public Sub RunTestSuite()
         Debug.Print "✗ 标题优先计算测试失败"
     End If
     
-    ' 测试6：安全数组读取功能
+    ' 测试6：超长文本处理功能（新增）
+    If TestExtremeTextProcessing() Then
+        passCount = passCount + 1
+        Debug.Print "✓ 超长文本处理测试通过"
+    Else
+        failCount = failCount + 1
+        Debug.Print "✗ 超长文本处理测试失败"
+    End If
+    
+    ' 测试7：安全数组读取功能
     If TestSafeReadRangeToArray() Then
         passCount = passCount + 1
         Debug.Print "✓ 安全数组读取测试通过"
@@ -1463,6 +1507,58 @@ Private Function TestHeaderPriorityCalculation() As Boolean
 TestFailed:
     g_Config = originalConfig
     TestHeaderPriorityCalculation = False
+End Function
+
+'--------------------------------------------------
+' 测试超长文本处理功能（新增）
+'--------------------------------------------------
+Private Function TestExtremeTextProcessing() As Boolean
+    On Error GoTo TestFailed
+    
+    ' 保存原始配置
+    Dim originalConfig As OptimizationConfig
+    originalConfig = g_Config
+    
+    ' 测试1：文本长度分类
+    Dim shortText As String, longText As String, extremeText As String
+    shortText = "短文本"
+    longText = "这是一个比较长的文本内容，用来测试长文本的处理效果和分类准确性，确保系统能够正确识别不同长度的文本"
+    extremeText = "这是一个极长的文本内容，专门设计用来测试系统在处理极端长度文本时的表现，包括但不限于：智能换行处理、行高自动调整、列宽优化计算、文本截断保护、格式保持、可读性优化、性能控制等多个方面的功能，确保系统能够在各种极端情况下都能够稳定运行"
+    
+    If ClassifyTextLength(shortText) <> TextLengthCategory.ShortText Then GoTo TestFailed
+    If ClassifyTextLength(longText) <> TextLengthCategory.LongText Then GoTo TestFailed
+    If ClassifyTextLength(extremeText) <> TextLengthCategory.ExtremeText Then GoTo TestFailed
+    
+    ' 测试2：超长文本宽度计算
+    Dim calculatedWidth As Double
+    calculatedWidth = CalculateExtremeTextWidth(extremeText)
+    If calculatedWidth <> g_Config.ExtremeTextWidth Then GoTo TestFailed
+    
+    ' 测试3：智能换行布局计算
+    Dim layout As WrapLayout
+    layout = CalculateWrapLayout(extremeText, 100)
+    If Not layout.NeedWrap Then GoTo TestFailed
+    If layout.TotalLines <= 1 Then GoTo TestFailed
+    
+    ' 测试4：断行点查找
+    Dim breaks As Collection
+    Set breaks = FindBreakPoints("测试，文本；内容：换行！效果？验证。")
+    If breaks.Count = 0 Then GoTo TestFailed
+    
+    ' 测试5：行高计算
+    Dim rowHeight As Double
+    rowHeight = CalculateOptimalRowHeight(extremeText, 120)
+    If rowHeight <= MIN_ROW_HEIGHT Then GoTo TestFailed
+    
+    ' 恢复原始配置
+    g_Config = originalConfig
+    
+    TestExtremeTextProcessing = True
+    Exit Function
+    
+TestFailed:
+    g_Config = originalConfig
+    TestExtremeTextProcessing = False
 End Function
 
 '--------------------------------------------------
@@ -1788,6 +1884,27 @@ Private Function GetUserConfiguration() As Boolean
             g_Config.WrapThreshold = maxWidth
         End If
     End If
+    
+    ' 配置超长文本处理
+    response = InputBox("设置超长文本列宽（字符单位）" & vbCrLf & _
+                       "用于处理极长文本内容" & vbCrLf & _
+                       "范围: 80-200，当前: " & g_Config.ExtremeTextWidth, _
+                       "超长文本配置", CStr(g_Config.ExtremeTextWidth))
+    
+    If response <> "" And IsNumeric(response) Then
+        Dim extremeWidth As Double
+        extremeWidth = CDbl(response)
+        If extremeWidth >= 80 And extremeWidth <= 200 Then
+            g_Config.ExtremeTextWidth = extremeWidth
+        End If
+    End If
+    
+    ' 配置智能断行
+    userChoice = MsgBox("是否启用智能断行？" & vbCrLf & vbCrLf & _
+                       "启用后将在标点符号处优先换行，提升可读性", _
+                       vbYesNo + vbQuestion, "智能断行配置")
+    
+    g_Config.SmartLineBreak = (userChoice = vbYes)
     
     ' 配置标题优先模式
     userChoice = MsgBox("是否启用标题优先模式？" & vbCrLf & vbCrLf & _
@@ -2155,7 +2272,7 @@ Private Sub ApplyAlignmentOptimizationWithHeader(targetRange As Range, analyses(
 End Sub
 
 Private Sub ApplyWrapAndRowHeight(targetRange As Range, analyses() As ColumnAnalysisData)
-    ' 应用换行和行高调整，特别关注标题行
+    ' 应用换行和行高调整，特别关注标题行和超长文本
     On Error Resume Next
     
     Dim i As Long
@@ -2168,6 +2285,17 @@ Private Sub ApplyWrapAndRowHeight(targetRange As Range, analyses() As ColumnAnal
     For i = 1 To UBound(analyses)
         If analyses(i).NeedWrap Then
             targetRange.Columns(i).WrapText = True
+            
+            ' 对超长文本列设置垂直对齐为顶部
+            If analyses(i).IsHeaderColumn And Not IsEmpty(analyses(i).HeaderText) Then
+                Dim headerCategory As TextLengthCategory
+                headerCategory = ClassifyTextLength(analyses(i).HeaderText)
+                
+                If headerCategory >= TextLengthCategory.LongText Then
+                    ' 超长文本设置顶部对齐提升可读性
+                    targetRange.Columns(i).VerticalAlignment = xlTop
+                End If
+            End If
         End If
         
         ' 检查标题是否需要特殊处理
@@ -2177,9 +2305,16 @@ Private Sub ApplyWrapAndRowHeight(targetRange As Range, analyses() As ColumnAnal
                 targetRange.Cells(1, i).WrapText = True
                 hasHeaderAdjustment = True
                 
-                ' 计算需要的行高
-                If analyses(i).HeaderRowHeight > maxHeaderHeight Then
-                    maxHeaderHeight = analyses(i).HeaderRowHeight
+                ' 计算需要的行高（增强版 - 支持超长文本）
+                Dim calculatedHeight As Double
+                If Not IsEmpty(analyses(i).HeaderText) Then
+                    calculatedHeight = CalculateOptimalRowHeight(analyses(i).HeaderText, analyses(i).OptimalWidth)
+                Else
+                    calculatedHeight = analyses(i).HeaderRowHeight
+                End If
+                
+                If calculatedHeight > maxHeaderHeight Then
+                    maxHeaderHeight = calculatedHeight
                 End If
             End If
         End If
@@ -2187,6 +2322,10 @@ Private Sub ApplyWrapAndRowHeight(targetRange As Range, analyses() As ColumnAnal
     
     ' 如果有标题需要调整，先设置标题行高（仅在标题行可见时）
     If hasHeaderAdjustment And Not targetRange.Rows(1).Hidden Then
+        ' 限制最大行高避免界面问题
+        If maxHeaderHeight > MAX_ROW_HEIGHT Then
+            maxHeaderHeight = MAX_ROW_HEIGHT
+        End If
         targetRange.Rows(1).RowHeight = maxHeaderHeight
     End If
     
@@ -2337,12 +2476,22 @@ Private Function CalculateOptimalWidthWithHeader(analysis As ColumnAnalysisData)
         Exit Function
     End If
     
-    ' 标题优先模式
+    ' 标题优先模式（增强版 - 支持超长文本）
     Dim headerRequiredWidth As Double
     Dim dataOptimalWidth As Double
     
-    ' 计算标题需要的宽度
-    headerRequiredWidth = AnalyzeHeaderWidth(analysis.HeaderText, g_Config.MaxColumnWidth)
+    ' 检查标题是否为超长文本
+    Dim headerCategory As TextLengthCategory
+    headerCategory = ClassifyTextLength(analysis.HeaderText)
+    
+    ' 根据文本长度分类计算标题需要的宽度
+    If headerCategory >= TextLengthCategory.LongText Then
+        ' 长文本使用专门的计算函数
+        headerRequiredWidth = CalculateExtremeTextWidth(analysis.HeaderText)
+    Else
+        ' 普通文本使用原有逻辑
+        headerRequiredWidth = AnalyzeHeaderWidth(analysis.HeaderText, g_Config.MaxColumnWidth)
+    End If
     
     ' 计算数据内容的最优宽度
     dataOptimalWidth = analysis.MaxContentWidth + g_Config.TextBuffer
@@ -2353,20 +2502,35 @@ Private Function CalculateOptimalWidthWithHeader(analysis As ColumnAnalysisData)
     ' 取两者中的较大值作为最终宽度
     result.FinalWidth = Application.Max(headerRequiredWidth, dataOptimalWidth)
     
-    ' 检查是否需要换行
+    ' 检查是否需要换行（增强版）
     Dim headerTextWidth As Double
     headerTextWidth = CalculateTextWidth(analysis.HeaderText, 12)
     
-    If headerTextWidth + g_Config.TextBuffer > g_Config.MaxColumnWidth Then
+    ' 超长文本的换行判断
+    If headerCategory >= TextLengthCategory.VeryLongText Then
+        ' 超长/极长文本强制换行
         result.NeedWrap = True
-        result.FinalWidth = g_Config.MaxColumnWidth
+        result.FinalWidth = g_Config.ExtremeTextWidth
+    ElseIf headerCategory = TextLengthCategory.LongText Then
+        ' 长文本可选换行
+        If headerTextWidth + g_Config.TextBuffer > result.FinalWidth Then
+            result.NeedWrap = True
+        Else
+            result.NeedWrap = False
+        End If
     Else
-        result.NeedWrap = False
+        ' 普通文本的换行判断
+        If headerTextWidth + g_Config.TextBuffer > g_Config.MaxColumnWidth Then
+            result.NeedWrap = True
+            result.FinalWidth = g_Config.MaxColumnWidth
+        Else
+            result.NeedWrap = False
+        End If
     End If
     
     ' 应用最终的边界控制
-    If result.FinalWidth > g_Config.MaxColumnWidth Then
-        result.FinalWidth = g_Config.MaxColumnWidth
+    If result.FinalWidth > g_Config.ExtremeTextWidth Then
+        result.FinalWidth = g_Config.ExtremeTextWidth
         result.NeedWrap = True
     ElseIf result.FinalWidth < g_Config.MinColumnWidth Then
         result.FinalWidth = g_Config.MinColumnWidth
@@ -2392,7 +2556,7 @@ Private Function SafeGetCellValue(cellValue As Variant) As String
 End Function
 
 Private Function CollectPreviewInfo(targetRange As Range) As PreviewInfo
-    ' 收集预览信息
+    ' 收集预览信息（增强版 - 支持超长文本预览）
     Dim info As PreviewInfo
     info.AffectedCells = targetRange.Cells.Count
     info.TotalColumns = targetRange.Columns.Count
@@ -2407,10 +2571,12 @@ Private Function CollectPreviewInfo(targetRange As Range) As PreviewInfo
     Dim maxWidth As Double
     Dim minWidth As Double
     Dim headerCount As Long
+    Dim extremeTextCount As Long
     
     maxWidth = 0
     minWidth = 999
     headerCount = 0
+    extremeTextCount = 0
     
     For col = 1 To info.TotalColumns
         Dim analysis As ColumnAnalysisData
@@ -2430,16 +2596,28 @@ Private Function CollectPreviewInfo(targetRange As Range) As PreviewInfo
         If analysis.OptimalWidth < minWidth Then minWidth = analysis.OptimalWidth
         
         ' 统计标题列
-        If analysis.IsHeaderColumn Then headerCount = headerCount + 1
+        If analysis.IsHeaderColumn Then 
+            headerCount = headerCount + 1
+            
+            ' 检查是否包含超长文本
+            If Not IsEmpty(analysis.HeaderText) Then
+                Dim textCategory As TextLengthCategory
+                textCategory = ClassifyTextLength(analysis.HeaderText)
+                If textCategory >= TextLengthCategory.VeryLongText Then
+                    extremeTextCount = extremeTextCount + 1
+                End If
+            End If
+        End If
     Next col
     
     info.MaxWidth = maxWidth
     info.MinWidth = minWidth
     
-    ' 估算处理时间（基于数据量和复杂度）
+    ' 估算处理时间（基于数据量和复杂度，包含超长文本处理时间）
     info.EstimatedTime = (info.AffectedCells / 10000) * 1.5
     If info.HasMergedCells Then info.EstimatedTime = info.EstimatedTime * 1.2
     If headerCount > 0 Then info.EstimatedTime = info.EstimatedTime * 1.1
+    If extremeTextCount > 0 Then info.EstimatedTime = info.EstimatedTime * 1.3  ' 超长文本需要额外处理时间
     If info.EstimatedTime < 0.5 Then info.EstimatedTime = 0.5
     
     CollectPreviewInfo = info
@@ -2754,6 +2932,274 @@ Sub TestHiddenCellsProtection()
     fullReport = fullReport & testResult
     
     MsgBox fullReport, vbInformation, "隐藏行列保护测试结果"
+    
+    Exit Sub
+    
+ErrorHandler:
+    MsgBox "测试过程中发生错误: " & Err.Description, vbCritical, "错误"
+End Sub
+
+' =================== 超长文本处理函数（新增） ===================
+
+'--------------------------------------------------
+' 分类文本长度
+'--------------------------------------------------
+Private Function ClassifyTextLength(text As String) As TextLengthCategory
+    Dim textLength As Long
+    textLength = Len(text)
+    
+    If textLength <= 20 Then
+        ClassifyTextLength = TextLengthCategory.ShortText
+    ElseIf textLength <= 50 Then
+        ClassifyTextLength = TextLengthCategory.MediumText
+    ElseIf textLength <= 100 Then
+        ClassifyTextLength = TextLengthCategory.LongText
+    ElseIf textLength <= 200 Then
+        ClassifyTextLength = TextLengthCategory.VeryLongText
+    Else
+        ClassifyTextLength = TextLengthCategory.ExtremeText
+    End If
+End Function
+
+'--------------------------------------------------
+' 查找智能断行点
+'--------------------------------------------------
+Private Function FindBreakPoints(text As String) As Collection
+    Dim breaks As New Collection
+    Dim i As Long
+    Dim textLength As Long
+    textLength = Len(text)
+    
+    ' 优先在标点符号处断行
+    Dim punctuation As String
+    punctuation = "，。；：！？,;:!?"
+    
+    For i = 1 To textLength
+        Dim char As String
+        char = Mid(text, i, 1)
+        
+        ' 检查是否为标点符号
+        If InStr(punctuation, char) > 0 Then
+            breaks.Add i
+        ' 其次在空格处断行
+        ElseIf char = " " Then
+            breaks.Add i
+        End If
+    Next i
+    
+    Set FindBreakPoints = breaks
+End Function
+
+'--------------------------------------------------
+' 计算智能换行布局
+'--------------------------------------------------
+Private Function CalculateWrapLayout(text As String, maxWidth As Double) As WrapLayout
+    Dim layout As WrapLayout
+    
+    On Error GoTo ErrorHandler
+    
+    ' 获取文本总宽度
+    Dim totalWidth As Double
+    totalWidth = CalculateTextWidth(text, 11)
+    
+    ' 如果不需要换行
+    If totalWidth <= maxWidth Then
+        layout.TotalLines = 1
+        layout.OptimalRowHeight = MIN_ROW_HEIGHT
+        layout.NeedWrap = False
+        CalculateWrapLayout = layout
+        Exit Function
+    End If
+    
+    ' 需要换行的情况
+    layout.NeedWrap = True
+    
+    ' 估算需要的行数
+    Dim estimatedLines As Long
+    estimatedLines = Application.Ceiling(totalWidth / maxWidth, 1)
+    
+    ' 限制最大行数
+    If estimatedLines > g_Config.MaxWrapLines Then
+        estimatedLines = g_Config.MaxWrapLines
+    End If
+    
+    layout.TotalLines = estimatedLines
+    
+    ' 计算行高（每行约18像素包含间距）
+    layout.OptimalRowHeight = Application.Max(MIN_ROW_HEIGHT, estimatedLines * 18)
+    
+    ' 限制最大行高
+    If layout.OptimalRowHeight > MAX_ROW_HEIGHT Then
+        layout.OptimalRowHeight = MAX_ROW_HEIGHT
+    End If
+    
+    CalculateWrapLayout = layout
+    Exit Function
+    
+ErrorHandler:
+    ' 错误情况下返回安全默认值
+    layout.TotalLines = 1
+    layout.OptimalRowHeight = MIN_ROW_HEIGHT
+    layout.NeedWrap = False
+    CalculateWrapLayout = layout
+End Function
+
+'--------------------------------------------------
+' 计算超长文本的最优行高
+'--------------------------------------------------
+Private Function CalculateOptimalRowHeight(text As String, columnWidth As Double) As Double
+    On Error GoTo ErrorHandler
+    
+    Dim baseHeight As Double
+    baseHeight = MIN_ROW_HEIGHT
+    
+    ' 计算文本需要的行数
+    Dim textWidth As Double
+    textWidth = CalculateTextWidth(text, 11)
+    
+    Dim linesNeeded As Long
+    linesNeeded = Application.Max(1, Application.Ceiling(textWidth / columnWidth, 1))
+    
+    ' 限制最大行数
+    If linesNeeded > g_Config.MaxWrapLines Then
+        linesNeeded = g_Config.MaxWrapLines
+    End If
+    
+    ' 计算总行高（每行18像素 + 1.2倍行距）
+    Dim totalHeight As Double
+    totalHeight = baseHeight + (linesNeeded - 1) * 18 * 1.2
+    
+    ' 应用行高限制
+    If totalHeight > MAX_ROW_HEIGHT Then
+        totalHeight = MAX_ROW_HEIGHT
+    End If
+    
+    CalculateOptimalRowHeight = totalHeight
+    Exit Function
+    
+ErrorHandler:
+    CalculateOptimalRowHeight = MIN_ROW_HEIGHT
+End Function
+
+'--------------------------------------------------
+' 超长文本列宽计算（带分级处理）
+'--------------------------------------------------
+Private Function CalculateExtremeTextWidth(text As String) As Double
+    On Error GoTo ErrorHandler
+    
+    Dim textCategory As TextLengthCategory
+    textCategory = ClassifyTextLength(text)
+    
+    Select Case textCategory
+        Case TextLengthCategory.ShortText
+            ' 短文本：内容宽度+缓冲
+            CalculateExtremeTextWidth = CalculateTextWidth(text, 11) + g_Config.TextBuffer
+            
+        Case TextLengthCategory.MediumText
+            ' 中等文本：内容宽度+缓冲（上限70）
+            Dim mediumWidth As Double
+            mediumWidth = CalculateTextWidth(text, 11) + g_Config.TextBuffer
+            CalculateExtremeTextWidth = Application.Min(mediumWidth, 70)
+            
+        Case TextLengthCategory.LongText
+            ' 长文本：扩展至100
+            CalculateExtremeTextWidth = 100
+            
+        Case TextLengthCategory.VeryLongText
+            ' 超长文本：固定120
+            CalculateExtremeTextWidth = g_Config.ExtremeTextWidth
+            
+        Case TextLengthCategory.ExtremeText
+            ' 极长文本：固定120
+            CalculateExtremeTextWidth = g_Config.ExtremeTextWidth
+            
+        Case Else
+            ' 默认情况
+            CalculateExtremeTextWidth = g_Config.MaxColumnWidth
+    End Select
+    
+    ' 应用最小宽度限制
+    If CalculateExtremeTextWidth < g_Config.MinColumnWidth Then
+        CalculateExtremeTextWidth = g_Config.MinColumnWidth
+    End If
+    
+    Exit Function
+    
+ErrorHandler:
+    CalculateExtremeTextWidth = g_Config.MaxColumnWidth
+End Function
+
+' =================== 测试超长文本处理功能 ===================
+
+Sub TestExtremeTextHandling()
+    ' 测试超长文本处理功能
+    On Error GoTo ErrorHandler
+    
+    ' 创建测试数据
+    Dim ws As Worksheet
+    Set ws = ActiveSheet
+    
+    ' 清空测试区域
+    ws.Range("A1:E10").Clear
+    
+    ' 创建不同长度的测试文本
+    ws.Range("A1").Value = "短标题"  ' 短文本
+    ws.Range("B1").Value = "这是一个中等长度的标题文本示例"  ' 中等文本
+    ws.Range("C1").Value = "这是一个比较长的标题文本示例，用来测试长文本的处理效果，看看是否能够正确识别和处理长文本内容，确保显示效果良好"  ' 长文本
+    ws.Range("D1").Value = "这是一个超长的标题文本示例，专门用来测试系统对于超长文本的处理能力，包括智能换行、行高调整等功能，确保即使是很长的文本内容也能够在表格中正确显示，不会出现截断或者格式混乱的问题，同时保持良好的可读性和美观性"  ' 超长文本
+    ws.Range("E1").Value = "这是一个极长的标题文本示例，专门设计用来测试系统在处理极端长度文本时的表现，包括但不限于：智能换行处理、行高自动调整、列宽优化计算、文本截断保护、格式保持、可读性优化、性能控制等多个方面的功能，确保系统能够在各种极端情况下都能够稳定运行并提供良好的用户体验，同时不会因为文本过长而导致程序崩溃或者性能问题，这是一个综合性的测试案例"  ' 极长文本
+    
+    ' 添加一些数据行
+    ws.Range("A2").Value = 100
+    ws.Range("B2").Value = 200
+    ws.Range("C2").Value = 300
+    ws.Range("D2").Value = 400
+    ws.Range("E2").Value = 500
+    
+    ' 记录优化前的列宽
+    Dim originalWidths(1 To 5) As Double
+    Dim i As Integer
+    For i = 1 To 5
+        originalWidths(i) = ws.Columns(i).ColumnWidth
+    Next i
+    
+    ' 选择测试范围并应用优化
+    ws.Range("A1:E2").Select
+    Call OptimizeLayout
+    
+    ' 生成测试报告
+    Dim resultMsg As String
+    resultMsg = "超长文本处理测试结果:" & vbCrLf & vbCrLf
+    
+    Dim headers As Variant
+    headers = Array("短标题", "中等长度标题", "长文本标题", "超长文本标题", "极长文本标题")
+    
+    For i = 1 To 5
+        Dim currentWidth As Double
+        currentWidth = ws.Columns(i).ColumnWidth
+        
+        Dim textLength As Long
+        textLength = Len(ws.Cells(1, i).Value)
+        
+        resultMsg = resultMsg & "列" & i & " (长度:" & textLength & "字符):" & vbCrLf
+        resultMsg = resultMsg & "  原宽度: " & Format(originalWidths(i), "0.0")
+        resultMsg = resultMsg & " → 新宽度: " & Format(currentWidth, "0.0")
+        
+        ' 检查是否有换行
+        If ws.Cells(1, i).WrapText Then
+            resultMsg = resultMsg & " [换行]"
+        End If
+        
+        ' 检查行高
+        Dim rowHeight As Double
+        rowHeight = ws.Rows(1).RowHeight
+        resultMsg = resultMsg & " 行高:" & Format(rowHeight, "0.0")
+        
+        resultMsg = resultMsg & vbCrLf
+    Next i
+    
+    resultMsg = resultMsg & vbCrLf & "请检查 A1:E2 区域的文本是否完整显示！"
+    MsgBox resultMsg, vbInformation, "超长文本处理测试结果"
     
     Exit Sub
     
