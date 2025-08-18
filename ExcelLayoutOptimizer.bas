@@ -777,8 +777,8 @@ Private Function StartTimer() As Long
     StartTimer = GetTickCount()
 End Function
 
-Private Function ElapsedTime(startTime As Long) As Double
-    ElapsedTime = (GetTickCount() - startTime) / 1000#
+Private Function GetElapsedTime(startTime As Long) As Double
+    GetElapsedTime = (GetTickCount() - startTime) / 1000#
 End Function
 
 '--------------------------------------------------
@@ -821,6 +821,14 @@ Private Sub ShowProgress(current As Long, total As Long, message As String)
     Else
         Application.StatusBar = message
     End If
+End Sub
+
+'--------------------------------------------------
+' 清除进度显示
+'--------------------------------------------------
+Private Sub ClearProgress()
+    On Error Resume Next
+    Application.StatusBar = False
 End Sub
 
 '==================================================
