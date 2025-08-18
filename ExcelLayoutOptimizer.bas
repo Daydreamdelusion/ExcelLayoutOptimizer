@@ -762,7 +762,7 @@ Private Function AnalyzeColumnEnhanced(dataArray As Variant, columnIndex As Long
                 isLikelyHeader = True
             End If
             
-            ' 条件2：如果第一行文本较长且包含中文字符，很可能是标题
+            ' 条件2：如果第一行文本较长且包含中文字符，可能是标题
             Dim headerText As String
             headerText = SafeGetCellValue(firstRowValue)
             If Len(headerText) >= 4 Then ' 长度>=4个字符
@@ -1652,302 +1652,59 @@ TestFailed:
 End Function
 
 '==================================================
-' 辅助函数
+' 配置和用户交互函数
 '==================================================
 
 '--------------------------------------------------
-' 分析所有列
-'--------------------------------------------------
-Private Function AnalyzeAllColumns(dataArray As Variant, targetRange As Range) As ColumnAnalysisData()
-    Dim rowCount As Long, colCount As Long
-    Dim col As Long
-    
-    If IsArray(dataArray) Then
-        rowCount = UBound(dataArray, 1)
-        colCount = UBound(dataArray, 2)
-    Else
-        rowCount = 1
-        colCount = 1
-    End If
-    
-    Dim analyses() As ColumnAnalysisData
-    ReDim analyses(1 To colCount)
-    
-    For col = 1 To colCount
-        ShowProgress 20 + (col - 1) * 30 / colCount, 100, "分析列 " & col & "/" & colCount
-        
-        If CheckForCancel() Then
-            g_CancelOperation = True
-            AnalyzeAllColumns = analyses
-            Exit Function
-        End If
-        
-        ' 检查列是否隐藏，如果隐藏则跳过分析，但保留默认结构
-        If targetRange.Columns(col).Hidden Then
-            ' 为隐藏列创建一个默认的分析结果，但不进行实际分析
-            Dim defaultAnalysis As ColumnAnalysisData
-            defaultAnalysis.OptimalWidth = targetRange.Columns(col).ColumnWidth ' 保持原始宽度
-            defaultAnalysis.DataType = EmptyCell
-            defaultAnalysis.IsHeaderColumn = False
-            defaultAnalysis.HasMergedCells = False
-            defaultAnalysis.NeedWrap = False
-            defaultAnalysis.HeaderNeedWrap = False
-            analyses(col) = defaultAnalysis
-        Else
-            ' 只分析可见列
-            analyses(col) = AnalyzeColumnEnhanced(dataArray, col, rowCount, targetRange.Columns(col))
-        End If
-    Next col
-    
-    AnalyzeAllColumns = analyses
-End Function
-
-'--------------------------------------------------
-' 应用优化到块
-'--------------------------------------------------
-Private Sub ApplyOptimizationToChunk(chunkRange As Range, columnAnalyses() As ColumnAnalysisData)
-    Dim col As Long
-    Dim hasHeaderRowAdjustment As Boolean
-    hasHeaderRowAdjustment = False
-    
-    For col = 1 To UBound(columnAnalyses)
-        ' 跳过隐藏列
-        If Not chunkRange.Columns(col).Hidden And Not columnAnalyses(col).HasMergedCells And columnAnalyses(col).OptimalWidth > 0 Then
-            ' 只在第一个块时设置列宽
-            If chunkRange.Row = chunkRange.Parent.UsedRange.Row Then
-                chunkRange.Columns(col).EntireColumn.ColumnWidth = columnAnalyses(col).OptimalWidth
-            End If
-            
-            ' 设置对齐和换行
-            If columnAnalyses(col).NeedWrap Then
-                chunkRange.Columns(col).WrapText = True
-            End If
-            
-            ' 处理标题行高调整
-            If columnAnalyses(col).IsHeaderColumn And columnAnalyses(col).HeaderNeedWrap Then
-                If chunkRange.Row = chunkRange.Parent.UsedRange.Row Then
-                    ' 只在处理第一个块时调整标题行高
-                    chunkRange.Columns(col).Cells(1, 1).WrapText = True
-                    hasHeaderRowAdjustment = True
-                End If
-            End If
-        End If
-    Next col
-    
-    ' 如果有标题需要调整行高，统一设置第一行行高
-    If hasHeaderRowAdjustment And chunkRange.Row = chunkRange.Parent.UsedRange.Row Then
-        Dim maxHeaderHeight As Double
-        maxHeaderHeight = g_Config.HeaderMinHeight
-        
-        ' 找出需要的最大行高
-        For col = 1 To UBound(columnAnalyses)
-            If columnAnalyses(col).IsHeaderColumn And columnAnalyses(col).HeaderNeedWrap Then
-                If columnAnalyses(col).HeaderRowHeight > maxHeaderHeight Then
-                    maxHeaderHeight = columnAnalyses(col).HeaderRowHeight
-                End If
-            End If
-        Next col
-        
-        ' 设置第一行行高
-        chunkRange.Rows(1).RowHeight = maxHeaderHeight
-    End If
-End Sub
-
-'==================================================
-' 进度显示和用户反馈
-'==================================================
-
-'--------------------------------------------------
-' 显示进度
-'--------------------------------------------------
-Sub ShowProgress(current As Long, total As Long, message As String)
-    Dim percentage As Long
-    Dim progressBar As String
-    Dim i As Long
-    
-    If total = 0 Then Exit Sub ' 防止除零错误
-    percentage = CLng((current / total) * 100)
-    
-    ' 创建文本进度条
-    progressBar = "["
-    For i = 1 To 20
-        If i <= (percentage / 5) Then
-            progressBar = progressBar & "="
-        Else
-            progressBar = progressBar & " "
-        End If
-    Next i
-    progressBar = progressBar & "]"
-    
-    Application.StatusBar = message & " " & progressBar & " " & percentage & "%"
-    
-    ' 定期刷新显示
-    If current Mod PROGRESS_UPDATE_INTERVAL = 0 Then
-        DoEvents
-    End If
-End Sub
-
-'--------------------------------------------------
-' 清除进度显示
-'--------------------------------------------------
-Sub ClearProgress()
-    Application.StatusBar = False
-End Sub
-
-'==================================================
-' 性能计时器
-'==================================================
-
-'--------------------------------------------------
-' 开始计时
-'--------------------------------------------------
-Function StartTimer() As Long
-    StartTimer = GetTickCount()
-End Function
-
-'--------------------------------------------------
-' 获取经过时间
-'--------------------------------------------------
-Function GetElapsedTime(startTime As Long) As Double
-    ' 返回经过的秒数
-    GetElapsedTime = (GetTickCount() - startTime) / 1000#
-End Function
-
-'==================================================
-' 快捷键绑定
-'==================================================
-
-'--------------------------------------------------
-' 安装快捷键
-'--------------------------------------------------
-Public Sub InstallShortcuts()
-    On Error Resume Next
-    Application.OnKey "^+L", "OptimizeLayout"
-    Application.OnKey "^+Q", "QuickOptimize"
-    Application.OnKey "^+H", "ShowSystemInfo"
-    If Err.Number = 0 Then
-        MsgBox "快捷键已安装成功！" & vbCrLf & vbCrLf & _
-               "Ctrl+Shift+L - 布局优化" & vbCrLf & _
-               "Ctrl+Shift+Q - 快速优化" & vbCrLf & _
-               "Ctrl+Shift+H - 系统信息", _
-               vbInformation, "快捷键安装"
-    Else
-        MsgBox "快捷键安装失败", vbCritical, "错误"
-    End If
-    On Error GoTo 0
-End Sub
-
-'--------------------------------------------------
-' 卸载快捷键
-'--------------------------------------------------
-Public Sub UninstallShortcuts()
-    On Error Resume Next
-    Application.OnKey "^+L"
-    Application.OnKey "^+Q"
-    Application.OnKey "^+H"
-    MsgBox "快捷键已卸载", vbInformation, "快捷键管理"
-    On Error GoTo 0
-End Sub
-
-'==================================================
-' 版本信息和帮助
-'==================================================
-
-'--------------------------------------------------
-' 显示系统信息
-'--------------------------------------------------
-Public Sub ShowSystemInfo()
-    Dim info As String
-    
-    info = "Excel智能布局优化系统 v3.1" & vbCrLf & vbCrLf
-    info = info & "核心功能：" & vbCrLf
-    info = info & "• 标题优先完整显示（新功能）" & vbCrLf
-    info = info & "• 智能列宽优化" & vbCrLf
-    info = info & "• 自动内容对齐" & vbCrLf
-    info = info & "• 撤销/预览支持" & vbCrLf
-    info = info & "• 自定义配置" & vbCrLf & vbCrLf
-    
-    info = info & "标题优先特性：" & vbCrLf
-    info = info & "• 标题永不截断" & vbCrLf
-    info = info & "• 自动换行调整" & vbCrLf
-    info = info & "• 智能行高计算" & vbCrLf & vbCrLf
-    
-    info = info & "快捷键：" & vbCrLf
-    info = info & "• Ctrl+Shift+L：启动优化" & vbCrLf
-    info = info & "• Ctrl+Shift+Q：快速优化" & vbCrLf
-    info = info & "• Ctrl+Z：撤销优化" & vbCrLf & vbCrLf
-    
-    info = info & "更新日期：2025年8月18日" & vbCrLf
-    info = info & "作者：dadada"
-    
-    MsgBox info, vbInformation, "关于 Excel布局优化系统"
-End Sub
-
-'--------------------------------------------------
-' 实现完整的GetUserConfiguration函数
+' 获取用户配置
 '--------------------------------------------------
 Private Function GetUserConfiguration() As Boolean
     On Error GoTo ErrorHandler
     
     Dim response As String
-    Dim userChoice As VbMsgBoxResult
+    Dim prompt As String
     
-    ' 询问用户是否要自定义配置
-    userChoice = MsgBox("是否要自定义布局配置？" & vbCrLf & vbCrLf & _
-                       "选择'是'进行自定义设置" & vbCrLf & _
-                       "选择'否'使用默认设置", _
-                       vbYesNoCancel + vbQuestion, "Excel布局优化配置")
+    ' 简单配置模式 - 询问关键参数
+    prompt = "设置最大列宽（字符单位）" & vbCrLf & _
+             "范围: 30-100，默认: " & g_Config.MaxColumnWidth & vbCrLf & _
+             "直接按Enter使用默认值，按取消退出配置"
     
-    If userChoice = vbCancel Then
+    response = InputBox(prompt, "Excel布局优化配置", CStr(g_Config.MaxColumnWidth))
+    
+    ' 用户取消
+    If StrPtr(response) = 0 Then
         GetUserConfiguration = False
         Exit Function
-    ElseIf userChoice = vbNo Then
-        ' 使用默认配置
+    End If
+    
+    ' 用户按Enter使用默认值
+    If response = "" Then
         GetUserConfiguration = True
         Exit Function
     End If
     
-    ' 配置最大列宽
-    response = InputBox("设置最大列宽（字符单位）" & vbCrLf & _
-                       "范围: 30-100，当前: " & g_Config.MaxColumnWidth, _
-                       "列宽配置", CStr(g_Config.MaxColumnWidth))
-    
-    If response <> "" And IsNumeric(response) Then
-        Dim maxWidth As Double
-        maxWidth = CDbl(response)
-        If maxWidth >= 30 And maxWidth <= 100 Then
-            g_Config.MaxColumnWidth = maxWidth
-            g_Config.WrapThreshold = maxWidth
+    ' 验证输入
+    If IsNumeric(response) Then
+        Dim value As Double
+        value = CDbl(response)
+        If value >= 30 And value <= 100 Then
+            g_Config.MaxColumnWidth = value
+            g_Config.WrapThreshold = value
+        Else
+            MsgBox "请输入30-100之间的数值", vbExclamation, "输入错误"
+            GetUserConfiguration = False
+            Exit Function
         End If
+    Else
+        MsgBox "请输入有效的数字", vbExclamation, "输入错误"
+        GetUserConfiguration = False
+        Exit Function
     End If
     
-    ' 配置超长文本处理
-    response = InputBox("设置超长文本列宽（字符单位）" & vbCrLf & _
-                       "用于处理极长文本内容" & vbCrLf & _
-                       "范围: 80-200，当前: " & g_Config.ExtremeTextWidth, _
-                       "超长文本配置", CStr(g_Config.ExtremeTextWidth))
-    
-    If response <> "" And IsNumeric(response) Then
-        Dim extremeWidth As Double
-        extremeWidth = CDbl(response)
-        If extremeWidth >= 80 And extremeWidth <= 200 Then
-            g_Config.ExtremeTextWidth = extremeWidth
-        End If
-    End If
-    
-    ' 配置智能断行
-    userChoice = MsgBox("是否启用智能断行？" & vbCrLf & vbCrLf & _
-                       "启用后将在标点符号处优先换行，提升可读性", _
-                       vbYesNo + vbQuestion, "智能断行配置")
-    
-    g_Config.SmartLineBreak = (userChoice = vbYes)
-    
-    ' 配置标题优先模式
-    userChoice = MsgBox("是否启用标题优先模式？" & vbCrLf & vbCrLf & _
-                       "启用后将确保标题完整显示，必要时自动换行", _
-                       vbYesNo + vbQuestion, "标题优先配置")
-    
-    g_Config.HeaderPriority = (userChoice = vbYes)
+    ' 询问是否显示预览
+    Dim previewResponse As VbMsgBoxResult
+    previewResponse = MsgBox("是否在优化前显示预览？", vbYesNo + vbQuestion, "预览设置")
+    g_Config.ShowPreview = (previewResponse = vbYes)
     
     GetUserConfiguration = True
     Exit Function
@@ -1957,30 +1714,94 @@ ErrorHandler:
 End Function
 
 '--------------------------------------------------
-' 实现ShowPreviewDialog函数
+' 收集预览信息
+'--------------------------------------------------
+Private Function CollectPreviewInfo(targetRange As Range) As PreviewInfo
+    On Error GoTo ErrorHandler
+    
+    Dim info As PreviewInfo
+    
+    With info
+        .TotalColumns = targetRange.Columns.Count
+        .AffectedCells = targetRange.Cells.Count
+        .HasMergedCells = HasMergedCells(targetRange)
+        .HasFormulas = HasFormulas(targetRange)
+        
+        ' 分析列宽变化
+        Dim col As Long
+        Dim maxWidth As Double, minWidth As Double
+        minWidth = 999
+        maxWidth = 0
+        
+        For col = 1 To .TotalColumns
+            If Not targetRange.Columns(col).Hidden Then
+                Dim currentWidth As Double
+                currentWidth = targetRange.Columns(col).ColumnWidth
+                
+                If currentWidth < minWidth Then minWidth = currentWidth
+                If currentWidth > maxWidth Then maxWidth = currentWidth
+                
+                ' 简单估算需要调整的列
+                If currentWidth < g_Config.MinColumnWidth Or _
+                   currentWidth > g_Config.MaxColumnWidth Then
+                    .ColumnsToAdjust = .ColumnsToAdjust + 1
+                End If
+            End If
+        Next col
+        
+        .MinWidth = minWidth
+        .MaxWidth = maxWidth
+        
+        ' 估算需要换行的列（简化版）
+        For col = 1 To .TotalColumns
+            If targetRange.Columns(col).ColumnWidth > g_Config.WrapThreshold Then
+                .ColumnsNeedWrap = .ColumnsNeedWrap + 1
+            End If
+        Next col
+        
+        ' 估算处理时间
+        .EstimatedTime = (.AffectedCells / 10000) * 1.5
+        If .EstimatedTime < 0.5 Then .EstimatedTime = 0.5
+    End With
+    
+    CollectPreviewInfo = info
+    Exit Function
+    
+ErrorHandler:
+    ' 返回默认信息
+    With info
+        .TotalColumns = targetRange.Columns.Count
+        .AffectedCells = targetRange.Cells.Count
+        .EstimatedTime = 1
+    End With
+    CollectPreviewInfo = info
+End Function
+
+'--------------------------------------------------
+' 显示预览对话框
 '--------------------------------------------------
 Private Function ShowPreviewDialog(info As PreviewInfo, targetRange As Range) As VbMsgBoxResult
+    On Error GoTo ErrorHandler
+    
     Dim message As String
     
     message = "布局优化预览" & vbCrLf & vbCrLf
     message = message & "优化区域: " & targetRange.Address & vbCrLf
-    message = message & String(50, "-") & vbCrLf
+    message = message & String(40, "-") & vbCrLf
     message = message & "• 总列数: " & info.TotalColumns & vbCrLf
-    message = message & "• 需调整: " & info.ColumnsToAdjust & " 列" & vbCrLf
+    message = message & "• 影响单元格: " & Format(info.AffectedCells, "#,##0") & vbCrLf
     
-    If info.ColumnsNeedWrap > 0 Then
-        message = message & "• 需换行: " & info.ColumnsNeedWrap & " 列"
-        If g_Config.HeaderPriority Then
-            message = message & "（包含标题）"
-        End If
-        message = message & vbCrLf
+    If info.ColumnsToAdjust > 0 Then
+        message = message & "• 需调整: " & info.ColumnsToAdjust & " 列" & vbCrLf
     End If
     
-    message = message & "• 宽度范围: " & Format(info.MinWidth, "0.0") & _
-              " - " & Format(info.MaxWidth, "0.0") & vbCrLf
+    If info.ColumnsNeedWrap > 0 Then
+        message = message & "• 可能需要换行: " & info.ColumnsNeedWrap & " 列" & vbCrLf
+    End If
     
-    If g_Config.HeaderPriority Then
-        message = message & "• 标题优先: 已启用" & vbCrLf
+    If info.MinWidth > 0 And info.MaxWidth > 0 Then
+        message = message & "• 当前列宽范围: " & Format(info.MinWidth, "0.0") & _
+                  " - " & Format(info.MaxWidth, "0.0") & vbCrLf
     End If
     
     If info.HasMergedCells Then
@@ -1991,15 +1812,19 @@ Private Function ShowPreviewDialog(info As PreviewInfo, targetRange As Range) As
         message = message & "• 提示: 包含公式" & vbCrLf
     End If
     
-    message = message & String(50, "-") & vbCrLf
+    message = message & String(40, "-") & vbCrLf
     message = message & "预计耗时: " & Format(info.EstimatedTime, "0.0") & " 秒" & vbCrLf & vbCrLf
     message = message & "是否继续？（处理中可按ESC中断）"
     
     ShowPreviewDialog = MsgBox(message, vbYesNoCancel + vbInformation, "Excel布局优化")
+    Exit Function
+    
+ErrorHandler:
+    ShowPreviewDialog = vbNo
 End Function
 
 '--------------------------------------------------
-' 实现SaveStateForUndo函数（完整版）
+' 保存撤销信息
 '--------------------------------------------------
 Private Function SaveStateForUndo(targetRange As Range) As Boolean
     On Error GoTo ErrorHandler
@@ -2045,17 +1870,15 @@ ErrorHandler:
 End Function
 
 '--------------------------------------------------
-' 实现RestoreFromUndo函数
+' 恢复撤销信息
 '--------------------------------------------------
 Private Function RestoreFromUndo() As Boolean
+    On Error GoTo ErrorHandler
+    
     If Not g_HasUndoInfo Then
         RestoreFromUndo = False
         Exit Function
     End If
-    
-    On Error GoTo ErrorHandler
-    
-    Application.ScreenUpdating = False
     
     ' 定位原始区域
     Dim ws As Worksheet
@@ -2079,154 +1902,50 @@ Private Function RestoreFromUndo() As Boolean
         targetRange.Rows(i).RowHeight = g_LastUndoInfo.RowHeights(i)
     Next i
     
-    Application.ScreenUpdating = True
     RestoreFromUndo = True
-    g_HasUndoInfo = False
     Exit Function
     
 ErrorHandler:
-    Application.ScreenUpdating = True
     RestoreFromUndo = False
 End Function
 
 '--------------------------------------------------
-' 其他辅助函数
+' 安全读取范围到数组
 '--------------------------------------------------
-
-Private Sub ResetCancelFlag()
-    g_CancelOperation = False
-End Sub
-
-Private Function CheckForCancel() As Boolean
-    ' 检查ESC键是否被按下
-    DoEvents
-    CheckForCancel = g_CancelOperation
-End Function
-
-Private Function HasMergedCells(targetRange As Range) As Boolean
-    On Error Resume Next
-    HasMergedCells = targetRange.MergeCells
-    If IsNull(HasMergedCells) Then HasMergedCells = False
-    On Error GoTo 0
-End Function
-
-Private Function IsHeaderRow(row1 As Range, row2 As Range) As Boolean
-    ' 增强的表头检测逻辑 - 特别针对中文标题优化
+Private Function SafeReadRangeToArray(targetRange As Range) As Variant
     On Error GoTo ErrorHandler
     
-    If row1 Is Nothing Then
-        IsHeaderRow = False
+    Dim result As Variant
+    
+    ' 处理单个单元格的情况
+    If targetRange.Cells.Count = 1 Then
+        ReDim result(1 To 1, 1 To 1)
+        result(1, 1) = targetRange.Value
+        SafeReadRangeToArray = result
         Exit Function
     End If
     
-    ' 如果只有一行数据，假设第一行是标题
-    If row2 Is Nothing Then
-        IsHeaderRow = True
-        Exit Function
+    ' 处理多个单元格
+    result = targetRange.Value2
+    
+    ' 确保返回的是二维数组
+    If Not IsArray(result) Then
+        ReDim result(1 To 1, 1 To 1)
+        result(1, 1) = targetRange.Value
     End If
     
-    Dim score As Integer
-    score = 0
-    
-    ' 检测1：第一行是否主要为文本，第二行是否主要为数字
-    Dim textCount As Integer, numberCount As Integer
-    Dim cell As Range
-    
-    For Each cell In row1.Cells
-        If Not IsEmpty(cell.Value) Then
-            If IsNumeric(cell.Value) Then
-                numberCount = numberCount + 1
-            Else
-                textCount = textCount + 1
-                ' 额外加分：包含中文字符
-                Dim cellText As String
-                cellText = CStr(cell.Value)
-                Dim j As Integer
-                For j = 1 To Len(cellText)
-                    Dim charCode As Integer
-                    charCode = Asc(Mid(cellText, j, 1))
-                    If charCode > 127 Or charCode < 0 Then ' 中文字符
-                        score = score + 1
-                        Exit For
-                    End If
-                Next j
-            End If
-        End If
-    Next cell
-    
-    If textCount > numberCount Then score = score + 2
-    
-    ' 检测2：第一行是否有格式化（加粗等）
-    For Each cell In row1.Cells
-        If cell.Font.Bold Or cell.Interior.ColorIndex <> xlNone Then
-            score = score + 2
-            Exit For
-        End If
-    Next cell
-    
-    ' 检测3：内容长度差异
-    Dim avgLen1 As Double, avgLen2 As Double
-    Dim count1 As Integer, count2 As Integer
-    
-    For Each cell In row1.Cells
-        If Not IsEmpty(cell.Value) Then
-            avgLen1 = avgLen1 + Len(CStr(cell.Value))
-            count1 = count1 + 1
-        End If
-    Next cell
-    
-    For Each cell In row2.Cells
-        If Not IsEmpty(cell.Value) Then
-            avgLen2 = avgLen2 + Len(CStr(cell.Value))
-            count2 = count2 + 1
-        End If
-    Next cell
-    
-    If count1 > 0 Then avgLen1 = avgLen1 / count1
-    If count2 > 0 Then avgLen2 = avgLen2 / count2
-    
-    If avgLen1 > avgLen2 And avgLen1 > 3 Then score = score + 1
-    
-    ' 检测4：特殊关键词检测
-    For Each cell In row1.Cells
-        If Not IsEmpty(cell.Value) Then
-            Dim testText As String
-            testText = CStr(cell.Value)
-            If InStr(testText, "数量") > 0 Or InStr(testText, "金额") > 0 Or _
-               InStr(testText, "时间") > 0 Or InStr(testText, "日期") > 0 Or _
-               InStr(testText, "名称") > 0 Or InStr(testText, "编号") > 0 Or _
-               InStr(testText, "类型") > 0 Or InStr(testText, "状态") > 0 Then
-                score = score + 2
-                Exit For
-            End If
-        End If
-    Next cell
-    
-    ' 检测5：位置因素 - 如果是第一行，增加权重
-    If row1.Row = 1 Then
-        score = score + 1
-    End If
-    
-    ' 降低阈值，特别是对于包含中文的情况
-    ' 得分>=2认为是表头（原来是2，现在保持不变但加分更容易）
-    IsHeaderRow = (score >= 2)
+    SafeReadRangeToArray = result
     Exit Function
     
 ErrorHandler:
-    IsHeaderRow = True ' 出错时默认假设是标题
+    ' 错误时返回空数组
+    ReDim result(1 To targetRange.Rows.Count, 1 To targetRange.Columns.Count)
+    SafeReadRangeToArray = result
 End Function
 
-Private Sub ApplyColumnWidthOptimization(targetRange As Range, analyses() As ColumnAnalysisData)
-    ' 优化列宽，但保持隐藏列的隐藏状态
-    Dim i As Long
-    For i = 1 To UBound(analyses)
-        ' 只处理可见列，跳过隐藏列
-        If Not targetRange.Columns(i).Hidden And Not analyses(i).HasMergedCells Then
-            targetRange.Columns(i).ColumnWidth = analyses(i).OptimalWidth
-        End If
-    Next i
-End Sub
-
+'--------------------------------------------------
+' 应用对齐优化（修正版，使用定义的辅助函数）
+'--------------------------------------------------
 Private Sub ApplyAlignmentOptimizationWithHeader(targetRange As Range, analyses() As ColumnAnalysisData, hasHeader As Boolean)
     ' 智能对齐优化，支持标题居中，但保护隐藏列
     On Error Resume Next
@@ -2237,69 +1956,53 @@ Private Sub ApplyAlignmentOptimizationWithHeader(targetRange As Range, analyses(
     For i = 1 To UBound(analyses)
         Set col = targetRange.Columns(i)
         
-        ' 只处理可见列，跳过隐藏列
+        ' 只处理可见列
         If Not col.Hidden Then
-            ' 如果有表头，设置标题行居中对齐
-            If hasHeader Then
-                col.Cells(1, 1).HorizontalAlignment = xlCenter
-                col.Cells(1, 1).VerticalAlignment = xlCenter
-                
-                ' 为标题行设置轻微的格式增强（可选）
-                If Not col.Cells(1, 1).Font.Bold Then
-                    ' 只有在没有加粗的情况下才稍微增强格式
-                    col.Cells(1, 1).Font.Size = col.Cells(1, 1).Font.Size + 0.5
+            ' 如果有表头且是第一行，标题居中
+            If hasHeader And targetRange.Rows.Count > 1 Then
+                ' 标题行（第一行）居中
+                If Not targetRange.Rows(1).Hidden Then
+                    col.Cells(1, 1).HorizontalAlignment = xlCenter
+                    col.Cells(1, 1).VerticalAlignment = xlCenter
                 End If
                 
-                ' 如果标题较长，确保启用换行并保持居中
-                If analyses(i).IsHeaderColumn And Len(analyses(i).HeaderText) > 8 Then
-                    Dim headerWidth As Double
-                    headerWidth = CalculateTextWidth(analyses(i).HeaderText, 12)
-                    If headerWidth > col.ColumnWidth * 7 Then ' 如果文本宽度超过列宽
-                        col.Cells(1, 1).WrapText = True
+                ' 数据行根据类型对齐
+                If targetRange.Rows.Count > 1 Then
+                    Dim dataRange As Range
+                    Set dataRange = col.Resize(targetRange.Rows.Count - 1, 1).Offset(1, 0)
+                    
+                    ' 过滤出可见行进行处理
+                    Dim visibleDataRange As Range
+                    Set visibleDataRange = GetVisibleRange(dataRange)
+                    
+                    If Not visibleDataRange Is Nothing Then
+                        Select Case analyses(i).DataType
+                            Case IntegerValue, DecimalValue, CurrencyValue, PercentageValue
+                                visibleDataRange.HorizontalAlignment = xlRight
+                            Case DateValue, TimeValue, DateTimeValue
+                                visibleDataRange.HorizontalAlignment = xlCenter
+                            Case Else
+                                visibleDataRange.HorizontalAlignment = xlLeft
+                        End Select
+                        visibleDataRange.VerticalAlignment = xlTop
                     End If
                 End If
-            End If
-            
-            ' 根据数据类型设置数据行的对齐方式
-            Dim startRow As Long
-            startRow = IIf(hasHeader, 2, 1)
-            
-            Dim dataRange As Range
-            Set dataRange = col.Cells(startRow, 1).Resize(targetRange.Rows.Count - startRow + 1, 1)
-            
-            ' 过滤出可见行进行处理
-            Dim visibleDataRange As Range
-            Set visibleDataRange = GetVisibleRange(dataRange)
-            
-            If Not visibleDataRange Is Nothing Then
-                Select Case analyses(i).DataType
-                    Case IntegerValue, DecimalValue, CurrencyValue, PercentageValue
-                        ' 数值类型右对齐
-                        visibleDataRange.HorizontalAlignment = xlRight
-                        visibleDataRange.VerticalAlignment = xlCenter
-                        
-                    Case DateValue, TimeValue, DateTimeValue
-                        ' 日期时间类型居中对齐
-                        visibleDataRange.HorizontalAlignment = xlCenter
-                        visibleDataRange.VerticalAlignment = xlCenter
-                        
-                    Case BooleanValue
-                        ' 布尔值居中对齐
-                        visibleDataRange.HorizontalAlignment = xlCenter
-                        visibleDataRange.VerticalAlignment = xlCenter
-                        
-                    Case Else
-                        ' 文本类型左对齐
-                        visibleDataRange.HorizontalAlignment = xlLeft
-                        visibleDataRange.VerticalAlignment = xlCenter
-                End Select
-            End If
-            
-            ' 如果列有标题且标题需要换行，确保标题居中
-            If analyses(i).IsHeaderColumn And analyses(i).HeaderNeedWrap Then
-                col.Cells(1, 1).WrapText = True
-                col.Cells(1, 1).HorizontalAlignment = xlCenter
-                col.Cells(1, 1).VerticalAlignment = xlCenter
+            Else
+                ' 没有表头，整列统一对齐
+                Dim visibleCol As Range
+                Set visibleCol = GetVisibleRange(col)
+                
+                If Not visibleCol Is Nothing Then
+                    Select Case analyses(i).DataType
+                        Case IntegerValue, DecimalValue, CurrencyValue, PercentageValue
+                            visibleCol.HorizontalAlignment = xlRight
+                        Case DateValue, TimeValue, DateTimeValue
+                            visibleCol.HorizontalAlignment = xlCenter
+                        Case Else
+                            visibleCol.HorizontalAlignment = xlLeft
+                    End Select
+                    visibleCol.VerticalAlignment = xlTop
+                End If
             End If
         End If
     Next i
@@ -2307,6 +2010,9 @@ Private Sub ApplyAlignmentOptimizationWithHeader(targetRange As Range, analyses(
     On Error GoTo 0
 End Sub
 
+'--------------------------------------------------
+' 应用换行和行高调整（修正版）
+'--------------------------------------------------
 Private Sub ApplyWrapAndRowHeight(targetRange As Range, analyses() As ColumnAnalysisData)
     ' 应用换行和行高调整，特别关注标题行和超长文本
     On Error Resume Next
@@ -2319,69 +2025,38 @@ Private Sub ApplyWrapAndRowHeight(targetRange As Range, analyses() As ColumnAnal
     
     ' 首先处理列的换行设置
     For i = 1 To UBound(analyses)
-        ' 跳过隐藏列，避免处理异常数据
+        ' 跳过隐藏列
         If targetRange.Columns(i).Hidden Then
             GoTo NextColumn
         End If
         
-        If analyses(i).NeedWrap Then
-            targetRange.Columns(i).WrapText = True
+        ' 处理需要换行的列
+        If analyses(i).NeedWrap And Not analyses(i).HasMergedCells Then
+            ' 获取可见单元格
+            Dim visibleColCells As Range
+            Set visibleColCells = GetVisibleRange(targetRange.Columns(i))
             
-            ' 对超长文本列设置垂直对齐为顶部
-            If analyses(i).IsHeaderColumn And Not IsEmpty(analyses(i).HeaderText) Then
-                Dim headerCategory As TextLengthCategory
-                headerCategory = ClassifyTextLength(analyses(i).HeaderText)
-                
-                If headerCategory >= TextLengthCategory.LongText Then
-                    ' 超长文本设置顶部对齐提升可读性
-                    targetRange.Columns(i).VerticalAlignment = xlTop
+            If Not visibleColCells Is Nothing Then
+                visibleColCells.WrapText = True
+            End If
+        End If
+        
+        ' 处理标题换行（如果存在标题）
+        If analyses(i).IsHeaderColumn And analyses(i).HeaderNeedWrap Then
+            If Not targetRange.Rows(1).Hidden Then
+                targetRange.Columns(i).Cells(1, 1).WrapText = True
+                hasHeaderAdjustment = True
+                If analyses(i).HeaderRowHeight > maxHeaderHeight Then
+                    maxHeaderHeight = analyses(i).HeaderRowHeight
                 End If
             End If
         End If
         
-        ' 检查标题是否需要特殊处理
-        If analyses(i).IsHeaderColumn Then
-            ' 确保标题行启用换行（如果需要）
-            If analyses(i).HeaderNeedWrap Then
-                targetRange.Cells(1, i).WrapText = True
-                hasHeaderAdjustment = True
-                
-                ' 计算需要的行高（增强版 - 支持超长文本，增加安全检查）
-                Dim calculatedHeight As Double
-                If Not IsEmpty(analyses(i).HeaderText) And analyses(i).OptimalWidth > 0 Then
-                    calculatedHeight = CalculateOptimalRowHeight(analyses(i).HeaderText, analyses(i).OptimalWidth)
-                    
-                    ' 额外安全检查：避免异常高的行高
-                    If calculatedHeight > 100 Then
-                        calculatedHeight = 60 ' 限制为合理高度
-                    End If
-                Else
-                    calculatedHeight = analyses(i).HeaderRowHeight
-                End If
-                
-                If calculatedHeight > maxHeaderHeight Then
-                    maxHeaderHeight = calculatedHeight
-                End If
-            End If
-        End If
 NextColumn:
     Next i
     
     ' 如果有标题需要调整，先设置标题行高（仅在标题行可见时）
     If hasHeaderAdjustment And Not targetRange.Rows(1).Hidden Then
-        ' 严格限制最大行高避免界面问题
-        If maxHeaderHeight > 100 Then
-            maxHeaderHeight = 60  ' 进一步限制为60像素，约3-4行文本
-        End If
-        
-        ' 确保最小行高
-        If maxHeaderHeight < MIN_ROW_HEIGHT Then
-            maxHeaderHeight = MIN_ROW_HEIGHT
-        End If
-        
-        ' 调试信息（可选）
-        Debug.Print "设置标题行高: " & maxHeaderHeight & " 像素"
-        
         targetRange.Rows(1).RowHeight = maxHeaderHeight
     End If
     
@@ -2396,7 +2071,7 @@ NextColumn:
         Dim dataRows As Range
         Set dataRows = targetRange.Rows("2:" & targetRange.Rows.Count)
         
-        ' 只对可见行应用AutoFit
+        ' 获取可见的数据行
         Dim visibleDataRows As Range
         Set visibleDataRows = GetVisibleRange(dataRows)
         
@@ -2413,77 +2088,92 @@ NextColumn:
     On Error GoTo 0
 End Sub
 
-Private Function CalculateTextWidth(Text As String, fontSize As Single) As Double
-    ' 精确的文本宽度计算 - 修正中文字符宽度问题
+'--------------------------------------------------
+' 计算文本宽度（核心算法）
+'--------------------------------------------------
+Private Function CalculateTextWidth(text As String, fontSize As Integer) As Double
     On Error GoTo ErrorHandler
     
-    If Text = "" Then
+    If Len(text) = 0 Then
         CalculateTextWidth = 0
         Exit Function
     End If
     
-    Dim totalWidth As Double
-    Dim i As Integer
+    ' 统计字符类型
+    Dim charStats As CharCount
+    charStats = CountCharacterTypes(text)
+    
+    ' 计算加权宽度
+    Dim width As Double
+    width = charStats.ChineseCount * CHINESE_CHAR_WIDTH_FACTOR + _
+            charStats.EnglishCount * ENGLISH_CHAR_WIDTH_FACTOR + _
+            charStats.NumberCount * NUMBER_CHAR_WIDTH_FACTOR + _
+            charStats.OtherCount * OTHER_CHAR_WIDTH_FACTOR
+    
+    ' 字号调整（11号字体为基准）
+    width = width * (fontSize / 11)
+    
+    CalculateTextWidth = width
+    Exit Function
+    
+ErrorHandler:
+    CalculateTextWidth = Len(text) * 0.7 ' 默认值
+End Function
+
+'--------------------------------------------------
+' 统计字符类型
+'--------------------------------------------------
+Private Function CountCharacterTypes(text As String) As CharCount
+    Dim stats As CharCount
+    Dim i As Long
     Dim char As String
     Dim charCode As Integer
     
-    ' 修正后的字符宽度系数（基于实际测量）
-    Dim chineseCharWidth As Double
-    Dim englishCharWidth As Double
-    Dim numberCharWidth As Double
-    
-    ' 根据字体大小调整系数 - 修正为更准确的值
-    ' 中文字符在Excel中约占2个字符单位宽度
-    chineseCharWidth = (fontSize / 11) * 2.0  ' 从8.5修正为2.0
-    englishCharWidth = (fontSize / 11) * 1.0  ' 从4.8修正为1.0
-    numberCharWidth = (fontSize / 11) * 1.0   ' 从5.2修正为1.0
-    
-    For i = 1 To Len(Text)
-        char = Mid(Text, i, 1)
+    For i = 1 To Len(text)
+        char = Mid(text, i, 1)
         charCode = Asc(char)
         
         If charCode > 127 Or charCode < 0 Then
             ' 中文字符
-            totalWidth = totalWidth + chineseCharWidth
+            stats.ChineseCount = stats.ChineseCount + 1
+        ElseIf (charCode >= 65 And charCode <= 90) Or _
+               (charCode >= 97 And charCode <= 122) Then
+            ' 英文字符
+            stats.EnglishCount = stats.EnglishCount + 1
         ElseIf charCode >= 48 And charCode <= 57 Then
-            ' 数字字符 (0-9)
-            totalWidth = totalWidth + numberCharWidth
+            ' 数字
+            stats.NumberCount = stats.NumberCount + 1
         Else
-            ' 英文字符和符号
-            totalWidth = totalWidth + englishCharWidth
+            ' 其他字符
+            stats.OtherCount = stats.OtherCount + 1
         End If
     Next i
     
-    CalculateTextWidth = totalWidth
-    Exit Function
-    
-ErrorHandler:
-    ' 简化计算作为备用
-    CalculateTextWidth = Len(Text) * (fontSize / 11) * 1.5  ' 从6.5修正为1.5
+    stats.TotalCount = Len(text)
+    CountCharacterTypes = stats
 End Function
 
+'--------------------------------------------------
+' 分析标题宽度
+'--------------------------------------------------
 Private Function AnalyzeHeaderWidth(headerText As String, maxWidth As Double) As Double
     On Error GoTo ErrorHandler
     
-    If headerText = "" Then
-        AnalyzeHeaderWidth = 0
+    If Len(headerText) = 0 Then
+        AnalyzeHeaderWidth = g_Config.MinColumnWidth
+       
         Exit Function
     End If
     
-    ' 使用12号宋体计算标题的基本宽度（包含适当缓冲）
+    ' 计算标题的基本宽度（包含缓冲）
     Dim baseWidth As Double
-    baseWidth = CalculateTextWidth(headerText, 12) + g_Config.TextBuffer
-    
-    ' 对于长标题增加额外缓冲，确保完整显示
-    If Len(headerText) > 6 Then
-        baseWidth = baseWidth + 2 ' 额外2字符单位缓冲
-    End If
+    baseWidth = CalculateTextWidth(headerText, 11) + g_Config.TextBuffer
     
     ' 如果标题宽度在限制范围内，直接返回
     If baseWidth <= maxWidth Then
         AnalyzeHeaderWidth = baseWidth
     Else
-        ' 标题太长，需要换行，返回最大宽度
+        ' 标题需要换行，返回最大宽度
         AnalyzeHeaderWidth = maxWidth
     End If
     
@@ -2493,27 +2183,25 @@ ErrorHandler:
     AnalyzeHeaderWidth = g_Config.MinColumnWidth
 End Function
 
+'--------------------------------------------------
+' 计算标题行高
+'--------------------------------------------------
 Private Function CalculateHeaderRowHeight(headerText As String, columnWidth As Double) As Double
     On Error GoTo ErrorHandler
     
-    If headerText = "" Then
-        CalculateHeaderRowHeight = g_Config.HeaderMinHeight
-        Exit Function
-    End If
-    
-    ' 使用12号宋体计算需要的行数
+    ' 计算需要的行数
     Dim textWidth As Double
-    textWidth = CalculateTextWidth(headerText, 12)
+    textWidth = CalculateTextWidth(headerText, 11)
     
     Dim linesNeeded As Long
-    linesNeeded = Application.Max(1, Application.Ceiling(textWidth / columnWidth, 1))
+    linesNeeded = Application.Max(1, Application.WorksheetFunction.Ceiling(textWidth / columnWidth, 1))
     
-    ' 限制最大行数
+    ' 限制最大行数避免过度换行
     If linesNeeded > g_Config.HeaderMaxWrapLines Then
         linesNeeded = g_Config.HeaderMaxWrapLines
     End If
     
-    ' 计算行高（每行约15像素 + 间距）
+    ' 计算行高（每行约18像素包含间距）
     CalculateHeaderRowHeight = Application.Max(g_Config.HeaderMinHeight, linesNeeded * 18)
     
     Exit Function
@@ -2522,6 +2210,9 @@ ErrorHandler:
     CalculateHeaderRowHeight = g_Config.HeaderMinHeight
 End Function
 
+'--------------------------------------------------
+' 标题优先的列宽计算
+'--------------------------------------------------
 Private Function CalculateOptimalWidthWithHeader(analysis As ColumnAnalysisData) As WidthResult
     Dim result As WidthResult
     On Error GoTo ErrorHandler
@@ -2533,22 +2224,12 @@ Private Function CalculateOptimalWidthWithHeader(analysis As ColumnAnalysisData)
         Exit Function
     End If
     
-    ' 标题优先模式（增强版 - 支持超长文本）
+    ' 标题优先模式：标题宽度 vs 数据宽度
     Dim headerRequiredWidth As Double
     Dim dataOptimalWidth As Double
     
-    ' 检查标题是否为超长文本
-    Dim headerCategory As TextLengthCategory
-    headerCategory = ClassifyTextLength(analysis.HeaderText)
-    
-    ' 根据文本长度分类计算标题需要的宽度
-    If headerCategory >= TextLengthCategory.LongText Then
-        ' 长文本使用专门的计算函数
-        headerRequiredWidth = CalculateExtremeTextWidth(analysis.HeaderText)
-    Else
-        ' 普通文本使用原有逻辑
-        headerRequiredWidth = AnalyzeHeaderWidth(analysis.HeaderText, g_Config.MaxColumnWidth)
-    End If
+    ' 计算标题需要的宽度
+    headerRequiredWidth = AnalyzeHeaderWidth(analysis.HeaderText, g_Config.MaxColumnWidth)
     
     ' 计算数据内容的最优宽度
     dataOptimalWidth = analysis.MaxContentWidth + g_Config.TextBuffer
@@ -2559,35 +2240,20 @@ Private Function CalculateOptimalWidthWithHeader(analysis As ColumnAnalysisData)
     ' 取两者中的较大值作为最终宽度
     result.FinalWidth = Application.Max(headerRequiredWidth, dataOptimalWidth)
     
-    ' 检查是否需要换行（增强版）
+    ' 检查是否需要换行
     Dim headerTextWidth As Double
-    headerTextWidth = CalculateTextWidth(analysis.HeaderText, 12)
+    headerTextWidth = CalculateTextWidth(analysis.HeaderText, 11)
     
-    ' 超长文本的换行判断
-    If headerCategory >= TextLengthCategory.VeryLongText Then
-        ' 超长/极长文本强制换行
+    If headerTextWidth + g_Config.TextBuffer > g_Config.MaxColumnWidth Then
         result.NeedWrap = True
-        result.FinalWidth = g_Config.ExtremeTextWidth
-    ElseIf headerCategory = TextLengthCategory.LongText Then
-        ' 长文本可选换行
-        If headerTextWidth + g_Config.TextBuffer > result.FinalWidth Then
-            result.NeedWrap = True
-        Else
-            result.NeedWrap = False
-        End If
+        result.FinalWidth = g_Config.MaxColumnWidth
     Else
-        ' 普通文本的换行判断
-        If headerTextWidth + g_Config.TextBuffer > g_Config.MaxColumnWidth Then
-            result.NeedWrap = True
-            result.FinalWidth = g_Config.MaxColumnWidth
-        Else
-            result.NeedWrap = False
-        End If
+        result.NeedWrap = False
     End If
     
     ' 应用最终的边界控制
-    If result.FinalWidth > g_Config.ExtremeTextWidth Then
-        result.FinalWidth = g_Config.ExtremeTextWidth
+    If result.FinalWidth > g_Config.MaxColumnWidth Then
+        result.FinalWidth = g_Config.MaxColumnWidth
         result.NeedWrap = True
     ElseIf result.FinalWidth < g_Config.MinColumnWidth Then
         result.FinalWidth = g_Config.MinColumnWidth
@@ -2606,306 +2272,20 @@ ErrorHandler:
     CalculateOptimalWidthWithHeader = result
 End Function
 
-Private Function SafeGetCellValue(cellValue As Variant) As String
-    On Error Resume Next
-    SafeGetCellValue = CStr(cellValue)
-    On Error GoTo 0
-End Function
-
-Private Function CollectPreviewInfo(targetRange As Range) As PreviewInfo
-    ' 收集预览信息（增强版 - 支持超长文本预览）
-    Dim info As PreviewInfo
-    info.AffectedCells = targetRange.Cells.Count
-    info.TotalColumns = targetRange.Columns.Count
-    info.HasMergedCells = HasMergedCells(targetRange)
-    info.HasFormulas = HasFormulas(targetRange)
-    
-    ' 快速分析各列以收集预览信息
-    Dim dataArray As Variant
-    dataArray = SafeReadRangeToArray(targetRange)
-    
-    Dim col As Long
-    Dim maxWidth As Double
-    Dim minWidth As Double
-    Dim headerCount As Long
-    Dim extremeTextCount As Long
-    
-    maxWidth = 0
-    minWidth = 999
-    headerCount = 0
-    extremeTextCount = 0
-    
-    For col = 1 To info.TotalColumns
-        Dim analysis As ColumnAnalysisData
-        analysis = AnalyzeColumnEnhanced(dataArray, col, targetRange.Rows.Count, targetRange.Columns(col))
-        
-        ' 统计调整信息
-        If analysis.OptimalWidth <> targetRange.Columns(col).ColumnWidth Then
-            info.ColumnsToAdjust = info.ColumnsToAdjust + 1
-        End If
-        
-        If analysis.NeedWrap Or analysis.HeaderNeedWrap Then
-            info.ColumnsNeedWrap = info.ColumnsNeedWrap + 1
-        End If
-        
-        ' 记录宽度范围
-        If analysis.OptimalWidth > maxWidth Then maxWidth = analysis.OptimalWidth
-        If analysis.OptimalWidth < minWidth Then minWidth = analysis.OptimalWidth
-        
-        ' 统计标题列
-        If analysis.IsHeaderColumn Then
-            headerCount = headerCount + 1
-            
-            ' 检查是否包含超长文本
-            If Not IsEmpty(analysis.HeaderText) Then
-                Dim textCategory As TextLengthCategory
-                textCategory = ClassifyTextLength(analysis.HeaderText)
-                If textCategory >= TextLengthCategory.VeryLongText Then
-                    extremeTextCount = extremeTextCount + 1
-                End If
-            End If
-        End If
-    Next col
-    
-    info.MaxWidth = maxWidth
-    info.MinWidth = minWidth
-    
-    ' 估算处理时间（基于数据量和复杂度，包含超长文本处理时间）
-    info.EstimatedTime = (info.AffectedCells / 10000) * 1.5
-    If info.HasMergedCells Then info.EstimatedTime = info.EstimatedTime * 1.2
-    If headerCount > 0 Then info.EstimatedTime = info.EstimatedTime * 1.1
-    If extremeTextCount > 0 Then info.EstimatedTime = info.EstimatedTime * 1.3  ' 超长文本需要额外处理时间
-    If info.EstimatedTime < 0.5 Then info.EstimatedTime = 0.5
-    
-    CollectPreviewInfo = info
-End Function
-
-Private Function HasFormulas(targetRange As Range) As Boolean
-    On Error GoTo ErrorHandler
-    
-    Dim cell As Range
-    For Each cell In targetRange
-        If Not IsEmpty(cell.Value) And cell.HasFormula Then
-            HasFormulas = True
-            Exit Function
-        End If
-    Next cell
-    
-    HasFormulas = False
-    Exit Function
-    
-ErrorHandler:
-    HasFormulas = False
-End Function
-
-Private Function SafeReadRangeToArray(targetRange As Range) As Variant
-    On Error GoTo ErrorHandler
-    
-    ' 参数验证
-    If targetRange Is Nothing Then
-        GoTo ErrorHandler
-    End If
-    
-    ' 单个单元格特殊处理
-    If targetRange.Cells.Count = 1 Then
-        Dim singleArray(1 To 1, 1 To 1) As Variant
-        singleArray(1, 1) = targetRange.Value2
-        SafeReadRangeToArray = singleArray
-        Exit Function
-    End If
-    
-    ' 多单元格处理
-    ' 使用Value2属性避免格式转换，提高性能
-    SafeReadRangeToArray = targetRange.Value2
-    
-    ' 验证返回结果
-    If Not IsArray(SafeReadRangeToArray) Then
-        GoTo ErrorHandler
-    End If
-    
-    Exit Function
-    
-ErrorHandler:
-    ' 错误时返回安全的空数组
-    Dim errorArray(1 To 1, 1 To 1) As Variant
-    errorArray(1, 1) = ""
-    SafeReadRangeToArray = errorArray
-    
-    ' 可选：记录错误信息用于调试
-    Debug.Print "SafeReadRangeToArray 错误: " & Err.Description & " (错误号: " & Err.Number & ")"
-End Function
-
-' =================== 标题居中测试函数 ===================
-
-Sub TestHeaderCentering()
-    ' 测试标题居中功能的专用函数
-    On Error GoTo ErrorHandler
-    
-    ' 创建测试数据
-    Dim ws As Worksheet
-    Set ws = ActiveSheet
-    
-    ' 清空测试区域
-    ws.Range("A1:D10").Clear
-    
-    ' 创建测试数据 - 中文标题
-    ws.Range("A1").Value = "云仓新机数量"
-    ws.Range("B1").Value = "云仓维修及数量"
-    ws.Range("C1").Value = "产品类型"
-    ws.Range("D1").Value = "处理状态"
-    
-    ' 添加一些数据行
-    ws.Range("A2").Value = 100
-    ws.Range("B2").Value = 50
-    ws.Range("C2").Value = "手机"
-    ws.Range("D2").Value = "已完成"
-    
-    ws.Range("A3").Value = 200
-    ws.Range("B3").Value = 75
-    ws.Range("C3").Value = "平板电脑"
-    ws.Range("D3").Value = "处理中"
-    
-    ' 选择测试范围
-    ws.Range("A1:D3").Select
-    
-    ' 应用优化
-    ' Call OptimizeSelectedLayout ' Assuming this calls OptimizeLayout or a similar function
-    Call OptimizeLayout
-    
-    ' 检查结果
-    Dim headerRange As Range
-    Set headerRange = ws.Range("A1:D1")
-    
-    Dim resultMsg As String
-    resultMsg = "标题居中测试结果:" & vbCrLf & vbCrLf
-    
-    Dim cell As Range
-    For Each cell In headerRange
-        resultMsg = resultMsg & "'" & cell.Value & "' - 对齐方式: "
-        Select Case cell.HorizontalAlignment
-            Case xlCenter
-                resultMsg = resultMsg & "居中 ✓"
-            Case xlLeft
-                resultMsg = resultMsg & "左对齐 ✗"
-            Case xlRight
-                resultMsg = resultMsg & "右对齐 ✗"
-            Case Else
-                resultMsg = resultMsg & "其他(" & cell.HorizontalAlignment & ") ✗"
-        End Select
-        resultMsg = resultMsg & vbCrLf
-    Next cell
-    
-    resultMsg = resultMsg & vbCrLf & "测试完成！请检查 A1:D3 区域的标题是否已居中显示。"
-    MsgBox resultMsg, vbInformation, "标题居中测试"
-    
-    Exit Sub
-    
-ErrorHandler:
-    MsgBox "测试过程中发生错误: " & Err.Description, vbCritical, "错误"
-End Sub
-
-Sub TestLongHeaderDisplay()
-    ' 测试长标题完整显示功能的专用函数
-    On Error GoTo ErrorHandler
-    
-    ' 创建测试数据
-    Dim ws As Worksheet
-    Set ws = ActiveSheet
-    
-    ' 清空测试区域
-    ws.Range("A1:E10").Clear
-    
-    ' 创建测试数据 - 用户提到的具体长标题
-    ws.Range("A1").Value = "云仓新机数量"
-    ws.Range("B1").Value = "公司新机数量"
-    ws.Range("C1").Value = "公司维修机数量"
-    ws.Range("D1").Value = "发货日期（退货签收）时间"
-    ws.Range("E1").Value = "产品处理状态"
-    
-    ' 添加一些数据行
-    ws.Range("A2").Value = 150
-    ws.Range("B2").Value = 80
-    ws.Range("C2").Value = 25
-    ws.Range("D2").Value = "2025-08-18"
-    ws.Range("E2").Value = "已处理"
-    
-    ws.Range("A3").Value = 200
-    ws.Range("B3").Value = 120
-    ws.Range("C3").Value = 40
-    ws.Range("D3").Value = "2025-08-19"
-    ws.Range("E3").Value = "处理中"
-    
-    ' 记录优化前的列宽
-    Dim originalWidths(1 To 5) As Double
-    Dim i As Integer
-    For i = 1 To 5
-        originalWidths(i) = ws.Columns(i).ColumnWidth
-    Next i
-    
-    ' 选择测试范围
-    ws.Range("A1:E3").Select
-    
-    ' 应用优化
-    ' Call OptimizeSelectedLayout ' Assuming this calls OptimizeLayout or a similar function
-    Call OptimizeLayout
-    
-    ' 检查结果并生成报告
-    Dim resultMsg As String
-    resultMsg = "长标题显示测试结果:" & vbCrLf & vbCrLf
-    
-    Dim headers As Variant
-    headers = Array("云仓新机数量", "公司新机数量", "公司维修机数量", "发货日期（退货签收）时间", "产品处理状态")
-    
-    For i = 1 To 5
-        Dim currentWidth As Double
-        currentWidth = ws.Columns(i).ColumnWidth
-        
-        resultMsg = resultMsg & "列" & i & ": " & headers(i - 1) & vbCrLf
-        resultMsg = resultMsg & "  原宽度: " & Format(originalWidths(i), "0.0") & " → 新宽度: " & Format(currentWidth, "0.0")
-        
-        ' 检查是否有换行
-        If ws.Cells(1, i).WrapText Then
-            resultMsg = resultMsg & " (已启用换行)"
-        End If
-        
-        ' 检查对齐方式
-        Select Case ws.Cells(1, i).HorizontalAlignment
-            Case xlCenter
-                resultMsg = resultMsg & " [居中]"
-            Case xlLeft
-                resultMsg = resultMsg & " [左对齐]"
-            Case xlRight
-                resultMsg = resultMsg & " [右对齐]"
-        End Select
-        
-        resultMsg = resultMsg & vbCrLf
-    Next i
-    
-    resultMsg = resultMsg & vbCrLf & "请检查 A1:E3 区域的标题是否完整显示！"
-    MsgBox resultMsg, vbInformation, "长标题显示测试"
-    
-    Exit Sub
-    
-ErrorHandler:
-    MsgBox "测试过程中发生错误: " & Err.Description, vbCritical, "错误"
-End Sub
-
-' =================== 超长文本处理函数（新增） ===================
-
 '--------------------------------------------------
-' 分类文本长度
+' 文本长度分类
 '--------------------------------------------------
 Private Function ClassifyTextLength(text As String) As TextLengthCategory
-    Dim textLength As Long
-    textLength = Len(text)
+    Dim length As Long
+    length = Len(text)
     
-    If textLength <= 20 Then
+    If length <= 20 Then
         ClassifyTextLength = TextLengthCategory.ShortText
-    ElseIf textLength <= 50 Then
+    ElseIf length <= 50 Then
         ClassifyTextLength = TextLengthCategory.MediumText
-    ElseIf textLength <= 100 Then
+    ElseIf length <= 100 Then
         ClassifyTextLength = TextLengthCategory.LongText
-    ElseIf textLength <= 200 Then
+    ElseIf length <= 200 Then
         ClassifyTextLength = TextLengthCategory.VeryLongText
     Else
         ClassifyTextLength = TextLengthCategory.ExtremeText
@@ -2913,26 +2293,54 @@ Private Function ClassifyTextLength(text As String) As TextLengthCategory
 End Function
 
 '--------------------------------------------------
-' 查找智能断行点
+' 计算极长文本宽度
+'--------------------------------------------------
+Private Function CalculateExtremeTextWidth(text As String) As Double
+    ' 对于极长文本，使用固定宽度
+    CalculateExtremeTextWidth = g_Config.ExtremeTextWidth
+End Function
+
+'--------------------------------------------------
+' 计算换行布局
+'--------------------------------------------------
+Private Function CalculateWrapLayout(text As String, columnWidth As Double) As WrapLayout
+    Dim layout As WrapLayout
+    
+    ' 计算文本总宽度
+    Dim textWidth As Double
+    textWidth = CalculateTextWidth(text, 11)
+    
+    ' 计算需要的行数
+    layout.TotalLines = Application.WorksheetFunction.Ceiling(textWidth / columnWidth, 1)
+    
+    ' 限制最大行数
+    If layout.TotalLines > g_Config.MaxWrapLines Then
+        layout.TotalLines = g_Config.MaxWrapLines
+    End If
+    
+    ' 计算最优行高
+    layout.OptimalRowHeight = Application.Max(MIN_ROW_HEIGHT, layout.TotalLines * 18)
+    
+    ' 是否需要换行
+    layout.NeedWrap = (layout.TotalLines > 1)
+    
+    CalculateWrapLayout = layout
+End Function
+
+'--------------------------------------------------
+' 查找断行点
 '--------------------------------------------------
 Private Function FindBreakPoints(text As String) As Collection
     Dim breaks As New Collection
     Dim i As Long
-    Dim textLength As Long
-    textLength = Len(text)
+    Dim char As String
     
-    ' 优先在标点符号处断行
-    Dim punctuation As String
-    punctuation = "，。；：！？,;:!?"
-    
-    For i = 1 To textLength
-        Dim char As String
+    For i = 1 To Len(text)
         char = Mid(text, i, 1)
-        
-        ' 检查是否为标点符号
-        If InStr(punctuation, char) > 0 Then
+        ' 检查标点符号
+        If InStr("，。；：！？,;:!?、", char) > 0 Then
             breaks.Add i
-        ' 其次在空格处断行
+        ' 检查空格
         ElseIf char = " " Then
             breaks.Add i
         End If
@@ -2942,111 +2350,30 @@ Private Function FindBreakPoints(text As String) As Collection
 End Function
 
 '--------------------------------------------------
-' 计算智能换行布局
-'--------------------------------------------------
-Private Function CalculateWrapLayout(text As String, maxWidth As Double) As WrapLayout
-    Dim layout As WrapLayout
-    
-    On Error GoTo ErrorHandler
-    
-    ' 获取文本总宽度
-    Dim totalWidth As Double
-    totalWidth = CalculateTextWidth(text, 11)
-    
-    ' 如果不需要换行
-    If totalWidth <= maxWidth Then
-        layout.TotalLines = 1
-        layout.OptimalRowHeight = MIN_ROW_HEIGHT
-        layout.NeedWrap = False
-        CalculateWrapLayout = layout
-        Exit Function
-    End If
-    
-    ' 需要换行的情况
-    layout.NeedWrap = True
-    
-    ' 估算需要的行数
-    Dim estimatedLines As Long
-    estimatedLines = Application.Ceiling(totalWidth / maxWidth, 1)
-    
-    ' 限制最大行数
-    If estimatedLines > g_Config.MaxWrapLines Then
-        estimatedLines = g_Config.MaxWrapLines
-    End If
-    
-    layout.TotalLines = estimatedLines
-    
-    ' 计算行高（每行约18像素包含间距）
-    layout.OptimalRowHeight = Application.Max(MIN_ROW_HEIGHT, estimatedLines * 18)
-    
-    ' 限制最大行高
-    If layout.OptimalRowHeight > MAX_ROW_HEIGHT Then
-        layout.OptimalRowHeight = MAX_ROW_HEIGHT
-    End If
-    
-    CalculateWrapLayout = layout
-    Exit Function
-    
-ErrorHandler:
-    ' 错误情况下返回安全默认值
-    layout.TotalLines = 1
-    layout.OptimalRowHeight = MIN_ROW_HEIGHT
-    layout.NeedWrap = False
-    CalculateWrapLayout = layout
-End Function
-
-'--------------------------------------------------
-' 计算超长文本的最优行高
+' 计算最优行高
 '--------------------------------------------------
 Private Function CalculateOptimalRowHeight(text As String, columnWidth As Double) As Double
     On Error GoTo ErrorHandler
     
-    ' 安全检查
-    If text = "" Or columnWidth <= 0 Then
-        CalculateOptimalRowHeight = MIN_ROW_HEIGHT
-        Exit Function
-    End If
-    
     Dim baseHeight As Double
     baseHeight = MIN_ROW_HEIGHT
     
-    ' 计算文本需要的宽度（字符单位）
+    ' 计算需要的行数
     Dim textWidth As Double
     textWidth = CalculateTextWidth(text, 11)
     
-    ' 安全检查：避免除零或异常值
-    If textWidth <= 0 Then
-        CalculateOptimalRowHeight = baseHeight
-        Exit Function
-    End If
+    Dim lines As Long
+    lines = Application.WorksheetFunction.Ceiling(textWidth / (columnWidth * PIXELS_PER_CHAR_UNIT), 1)
     
-    ' 计算需要的行数（修正：确保单位一致）
-    Dim linesNeeded As Long
-    linesNeeded = Application.Max(1, Application.Ceiling(textWidth / columnWidth, 1))
+    ' 限制最大行数
+    If lines > 11 Then lines = 11
     
-    ' 限制最大行数，避免过度换行
-    If linesNeeded > g_Config.MaxWrapLines Then
-        linesNeeded = g_Config.MaxWrapLines
-    End If
-    
-    ' 对于短文本，限制行数为合理范围
-    If Len(text) <= 50 And linesNeeded > 3 Then
-        linesNeeded = 3
-    End If
-    
-    ' 计算总行高（每行约15像素基础高度 + 合理行距）
+    ' 计算总高度（包含行间距）
     Dim totalHeight As Double
-    If linesNeeded = 1 Then
-        totalHeight = baseHeight
-    Else
-        ' 多行时：基础行高 + (行数-1) * 行高增量
-        totalHeight = baseHeight + (linesNeeded - 1) * 15
-    End If
+    totalHeight = baseHeight + (lines - 1) * 18
     
-    ' 应用行高限制，避免异常高的行
-    If totalHeight > 100 Then  ' 限制为100像素，约5-6行文本
-        totalHeight = 100
-    End If
+    ' 应用最大高度限制
+    If totalHeight > MAX_ROW_HEIGHT Then totalHeight = MAX_ROW_HEIGHT
     
     CalculateOptimalRowHeight = totalHeight
     Exit Function
@@ -3054,280 +2381,3 @@ Private Function CalculateOptimalRowHeight(text As String, columnWidth As Double
 ErrorHandler:
     CalculateOptimalRowHeight = MIN_ROW_HEIGHT
 End Function
-
-'--------------------------------------------------
-' 超长文本列宽计算（带分级处理）
-'--------------------------------------------------
-Private Function CalculateExtremeTextWidth(text As String) As Double
-    On Error GoTo ErrorHandler
-    
-    Dim textCategory As TextLengthCategory
-    textCategory = ClassifyTextLength(text)
-    
-    Select Case textCategory
-        Case TextLengthCategory.ShortText
-            ' 短文本：内容宽度+缓冲
-            CalculateExtremeTextWidth = CalculateTextWidth(text, 11) + g_Config.TextBuffer
-            
-        Case TextLengthCategory.MediumText
-            ' 中等文本：内容宽度+缓冲（上限70）
-            Dim mediumWidth As Double
-            mediumWidth = CalculateTextWidth(text, 11) + g_Config.TextBuffer
-            CalculateExtremeTextWidth = Application.Min(mediumWidth, 70)
-            
-        Case TextLengthCategory.LongText
-            ' 长文本：扩展至100
-            CalculateExtremeTextWidth = 100
-            
-        Case TextLengthCategory.VeryLongText
-            ' 超长文本：固定120
-            CalculateExtremeTextWidth = g_Config.ExtremeTextWidth
-            
-        Case TextLengthCategory.ExtremeText
-            ' 极长文本：固定120
-            CalculateExtremeTextWidth = g_Config.ExtremeTextWidth
-            
-        Case Else
-            ' 默认情况
-            CalculateExtremeTextWidth = g_Config.MaxColumnWidth
-    End Select
-    
-    ' 应用最小宽度限制
-    If CalculateExtremeTextWidth < g_Config.MinColumnWidth Then
-        CalculateExtremeTextWidth = g_Config.MinColumnWidth
-    End If
-    
-    Exit Function
-    
-ErrorHandler:
-    CalculateExtremeTextWidth = g_Config.MaxColumnWidth
-End Function
-
-' =================== 测试超长文本处理功能 ===================
-
-Sub TestExtremeTextHandling()
-    ' 测试超长文本处理功能
-    On Error GoTo ErrorHandler
-    
-    ' 创建测试数据
-    Dim ws As Worksheet
-    Set ws = ActiveSheet
-    
-    ' 清空测试区域
-    ws.Range("A1:E10").Clear
-    
-    ' 创建不同长度的测试文本
-    ws.Range("A1").Value = "短标题"  ' 短文本
-    ws.Range("B1").Value = "这是一个中等长度的标题文本示例"  ' 中等文本
-    ws.Range("C1").Value = "这是一个比较长的标题文本示例，用来测试长文本的处理效果，看看是否能够正确识别和处理长文本内容，确保显示效果良好"  ' 长文本
-    ws.Range("D1").Value = "这是一个超长的标题文本示例，专门用来测试系统对于超长文本的处理能力，包括智能换行、行高调整等功能，确保即使是很长的文本内容也能够在表格中正确显示，不会出现截断或者格式混乱的问题，同时保持良好的可读性和美观性"  ' 超长文本
-    ws.Range("E1").Value = "这是一个极长的标题文本示例，专门设计用来测试系统在处理极端长度文本时的表现，包括但不限于：智能换行处理、行高自动调整、列宽优化计算、文本截断保护、格式保持、可读性优化、性能控制等多个方面的功能，确保系统能够在各种极端情况下都能够稳定运行并提供良好的用户体验，同时不会因为文本过长而导致程序崩溃或者性能问题，这是一个综合性的测试案例"  ' 极长文本
-    
-    ' 添加一些数据行
-    ws.Range("A2").Value = 100
-    ws.Range("B2").Value = 200
-    ws.Range("C2").Value = 300
-    ws.Range("D2").Value = 400
-    ws.Range("E2").Value = 500
-    
-    ' 记录优化前的列宽
-    Dim originalWidths(1 To 5) As Double
-    Dim i As Integer
-    For i = 1 To 5
-        originalWidths(i) = ws.Columns(i).ColumnWidth
-    Next i
-    
-    ' 选择测试范围并应用优化
-    ws.Range("A1:E2").Select
-    Call OptimizeLayout
-    
-    ' 生成测试报告
-    Dim resultMsg As String
-    resultMsg = "超长文本处理测试结果:" & vbCrLf & vbCrLf
-    
-    Dim headers As Variant
-    headers = Array("短标题", "中等长度标题", "长文本标题", "超长文本标题", "极长文本标题")
-    
-    For i = 1 To 5
-        Dim currentWidth As Double
-        currentWidth = ws.Columns(i).ColumnWidth
-        
-        Dim textLength As Long
-        textLength = Len(ws.Cells(1, i).Value)
-        
-        resultMsg = resultMsg & "列" & i & " (长度:" & textLength & "字符):" & vbCrLf
-        resultMsg = resultMsg & "  原宽度: " & Format(originalWidths(i), "0.0")
-        resultMsg = resultMsg & " → 新宽度: " & Format(currentWidth, "0.0")
-        
-        ' 检查是否有换行
-        If ws.Cells(1, i).WrapText Then
-            resultMsg = resultMsg & " [换行]"
-        End If
-        
-        ' 检查行高
-        Dim rowHeight As Double
-        rowHeight = ws.Rows(1).RowHeight
-        resultMsg = resultMsg & " 行高:" & Format(rowHeight, "0.0")
-        
-        resultMsg = resultMsg & vbCrLf
-    Next i
-    
-    resultMsg = resultMsg & vbCrLf & "请检查 A1:E2 区域的文本是否完整显示！"
-    MsgBox resultMsg, vbInformation, "超长文本处理测试结果"
-    
-    Exit Sub
-    
-ErrorHandler:
-    MsgBox "测试过程中发生错误: " & Err.Description, vbCritical, "错误"
-End Sub
-
-' =================== 诊断和调试函数（新增） ===================
-
-'--------------------------------------------------
-' 诊断标题行高计算问题
-'--------------------------------------------------
-Sub DiagnoseRowHeightIssue()
-    On Error GoTo ErrorHandler
-    
-    ' 获取当前选择区域
-    Dim selectedRange As Range
-    Set selectedRange = Selection
-    
-    If selectedRange Is Nothing Then
-        MsgBox "请先选择要诊断的区域", vbInformation
-        Exit Sub
-    End If
-    
-    ' 创建诊断报告
-    Dim report As String
-    report = "行高诊断报告" & vbCrLf & vbCrLf
-    report = report & "选择区域: " & selectedRange.Address & vbCrLf
-    report = report & "行数: " & selectedRange.Rows.Count & vbCrLf
-    report = report & "列数: " & selectedRange.Columns.Count & vbCrLf
-    report = report & String(40, "-") & vbCrLf
-    
-    ' 检查配置
-    If Not g_ConfigInitialized Then
-        InitializeDefaultConfig
-    End If
-    
-    report = report & "配置信息:" & vbCrLf
-    report = report & "• 标题优先模式: " & g_Config.HeaderPriority & vbCrLf
-    report = report & "• 智能断行: " & g_Config.SmartLineBreak & vbCrLf
-    report = report & "• 最大列宽: " & g_Config.MaxColumnWidth & vbCrLf
-    report = report & "• 超长文本宽度: " & g_Config.ExtremeTextWidth & vbCrLf
-    report = report & "• 最大换行行数: " & g_Config.MaxWrapLines & vbCrLf & vbCrLf
-    
-    ' 分析第一行（标题行）
-    report = report & "第一行分析:" & vbCrLf
-    Dim col As Long
-    For col = 1 To Application.Min(selectedRange.Columns.Count, 5) ' 只分析前5列
-        Dim cellValue As String
-        cellValue = selectedRange.Cells(1, col).Value
-        
-        If cellValue <> "" Then
-            Dim textWidth As Double
-            textWidth = CalculateTextWidth(cellValue, 11)
-            
-            Dim colWidth As Double
-            colWidth = selectedRange.Columns(col).ColumnWidth
-            
-            Dim calculatedHeight As Double
-            calculatedHeight = CalculateOptimalRowHeight(cellValue, colWidth)
-            
-            Dim textCategory As TextLengthCategory
-            textCategory = ClassifyTextLength(cellValue)
-            
-            report = report & "列" & col & " (" & Left(cellValue, 10) & "...):" & vbCrLf
-            report = report & "  文本长度: " & Len(cellValue) & " 字符" & vbCrLf
-            report = report & "  文本分类: " & textCategory & vbCrLf
-            report = report & "  文本宽度: " & Format(textWidth, "0.0") & " 字符单位" & vbCrLf
-            report = report & "  列宽: " & Format(colWidth, "0.0") & " 字符单位" & vbCrLf
-            report = report & "  计算行高: " & Format(calculatedHeight, "0.0") & " 像素" & vbCrLf
-            report = report & "  是否隐藏: " & selectedRange.Columns(col).Hidden & vbCrLf
-            report = report & vbCrLf
-        End If
-    Next col
-    
-    ' 显示当前行高
-    report = report & "当前第一行行高: " & Format(selectedRange.Rows(1).RowHeight, "0.0") & " 像素" & vbCrLf
-    
-    MsgBox report, vbInformation, "行高诊断报告"
-    
-    Exit Sub
-    
-ErrorHandler:
-    MsgBox "诊断过程中发生错误: " & Err.Description, vbCritical, "错误"
-End Sub
-
-'--------------------------------------------------
-' 重置行高到合理值
-'--------------------------------------------------
-Sub ResetRowHeightToNormal()
-    On Error GoTo ErrorHandler
-    
-    Dim selectedRange As Range
-    Set selectedRange = Selection
-    
-    If selectedRange Is Nothing Then
-        MsgBox "请先选择要重置行高的区域", vbInformation
-        Exit Sub
-    End If
-    
-    ' 重置所有行高为自动
-    selectedRange.Rows.AutoFit
-    
-    ' 确保第一行行高不超过合理范围
-    If selectedRange.Rows(1).RowHeight > 50 Then
-        selectedRange.Rows(1).RowHeight = 30 ' 设为30像素，约2行文本
-    End If
-    
-    MsgBox "行高已重置为合理值", vbInformation
-    
-    Exit Sub
-    
-ErrorHandler:
-    MsgBox "重置过程中发生错误: " & Err.Description, vbCritical, "错误"
-End Sub
-
-'--------------------------------------------------
-' 快速重置整个工作表的行高
-'--------------------------------------------------
-Sub ResetAllRowHeights()
-    On Error GoTo ErrorHandler
-    
-    Dim ws As Worksheet
-    Set ws = ActiveSheet
-    
-    Dim response As VbMsgBoxResult
-    response = MsgBox("确定要将整个工作表的所有行高重置为默认大小吗？" & vbCrLf & _
-                     "这将清除所有手动设置的行高。", vbYesNo + vbQuestion, "重置行高")
-    
-    If response = vbYes Then
-        ' 对整个工作表使用的范围进行重置
-        ws.UsedRange.Rows.AutoFit
-        
-        ' 额外确保没有行高超过50像素
-        Dim i As Long
-        Dim resetCount As Long
-        For i = 1 To ws.UsedRange.Rows.Count
-            If ws.Cells(i, 1).RowHeight > 50 Then
-                ws.Rows(i).RowHeight = 15 ' 设置为正常高度
-                resetCount = resetCount + 1
-            End If
-        Next i
-        
-        If resetCount > 0 Then
-            MsgBox "重置完成：" & vbCrLf & _
-                   "• 所有行高已重置为自动适应" & vbCrLf & _
-                   "• 额外重置了 " & resetCount & " 行异常高度", vbInformation
-        Else
-            MsgBox "重置完成：所有行高已重置为自动适应大小", vbInformation
-        End If
-    End If
-    
-    Exit Sub
-    
-ErrorHandler:
-    MsgBox "重置过程中发生错误: " & Err.Description, vbCritical, "错误"
-End Sub
