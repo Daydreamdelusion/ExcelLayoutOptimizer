@@ -692,7 +692,7 @@ Private Function AnalyzeColumnEnhanced(dataArray As Variant, columnIndex As Long
     analysis.HeaderRowHeight = g_Config.HeaderMinHeight
     
     If analysis.HasMergedCells Then
-        analysis.DataType = ShortText
+        analysis.DataType = DataType.ShortText
         analysis.MaxContentWidth = 0
         analysis.OptimalWidth = 0
         analysis.NeedWrap = False
@@ -864,11 +864,11 @@ Private Function GetEnhancedDataType(cellValue As Variant) As DataType
     textLen = Len(CStr(cellValue))
     
     If textLen <= 10 Then
-        GetEnhancedDataType = ShortText
+        GetEnhancedDataType = DataType.ShortText
     ElseIf textLen <= 50 Then
-        GetEnhancedDataType = MediumText
+        GetEnhancedDataType = DataType.MediumText
     Else
-        GetEnhancedDataType = LongText
+        GetEnhancedDataType = DataType.LongText
     End If
 End Function
 
@@ -881,7 +881,7 @@ Private Function DetermineColumnTypeEnhanced(typeDistribution() As Long) As Data
     Dim i As Long
     
     maxCount = 0
-    dominantType = ShortText
+    dominantType = DataType.ShortText
     
     ' 找出主导类型
     For i = 1 To 15
@@ -895,10 +895,10 @@ Private Function DetermineColumnTypeEnhanced(typeDistribution() As Long) As Data
     
     ' 特殊规则
     ' 如果有长文本，整列按长文本处理
-    If typeDistribution(LongText) > 0 Then
-        dominantType = LongText
+    If typeDistribution(DataType.LongText) > 0 Then
+        dominantType = DataType.LongText
     ' 如果混合了文本和数值，按混合内容处理
-    ElseIf (typeDistribution(ShortText) + typeDistribution(MediumText) > 0) And _
+    ElseIf (typeDistribution(DataType.ShortText) + typeDistribution(DataType.MediumText) > 0) And _
            (typeDistribution(IntegerValue) + typeDistribution(DecimalValue) > 0) Then
         dominantType = MixedContent
     End If
@@ -920,9 +920,9 @@ Private Function CalculateOptimalWidthEnhanced(contentWidth As Double, dataType 
     
     ' 根据数据类型确定缓冲区
     Select Case dataType
-        Case ShortText, MediumText
+        Case DataType.ShortText, DataType.MediumText
             buffer = g_Config.TextBuffer
-        Case LongText
+        Case DataType.LongText
             buffer = g_Config.TextBuffer * 1.5
         Case IntegerValue, DecimalValue
             buffer = g_Config.NumericBuffer
@@ -945,7 +945,7 @@ Private Function CalculateOptimalWidthEnhanced(contentWidth As Double, dataType 
         result.NeedWrap = False
     ElseIf calculatedWidth >= g_Config.MaxColumnWidth Then
         result.FinalWidth = g_Config.MaxColumnWidth
-        result.NeedWrap = (dataType = LongText Or dataType = MediumText)
+        result.NeedWrap = (dataType = DataType.LongText Or dataType = DataType.MediumText)
     Else
         result.FinalWidth = calculatedWidth
         result.NeedWrap = False
@@ -1042,7 +1042,7 @@ Private Sub InitializeDefaultConfig()
         .ExtremeTextWidth = EXTREME_TEXT_WIDTH       ' 极长文本固定宽度
         .LongTextThreshold = LONG_TEXT_THRESHOLD     ' 长文本阈值
         .SmartLineBreak = True                       ' 启用智能断行
-        .MaxWrapLines = MAX_WRAP_LINES              ' 最大换行行数
+        .MaxWrapLines = MAX_WRAP_LINES               ' 最大换行行数
         .LongTextExtendThreshold = LONG_TEXT_THRESHOLD ' 长文本扩展阈值
     End With
     g_ConfigInitialized = True
@@ -1148,7 +1148,7 @@ Private Function ValidateSelectionEnhanced(selectedRange As Range) As Boolean
     If HasMergedCells(selectedRange) Then
         Dim mergeResponse As VbMsgBoxResult
         mergeResponse = MsgBox("检测到合并单元格，这些区域将被跳过。是否继续？", _
-                               vbYesNo + vbQuestion, "Excel布局优化系统")
+                                vbYesNo + vbQuestion, "Excel布局优化系统")
         If mergeResponse = vbNo Then Exit Function
     End If
     
@@ -1342,8 +1342,8 @@ Private Function TestDataTypeDetection() As Boolean
     On Error GoTo TestFailed
     
     ' 测试各种数据类型
-    Debug.Assert GetEnhancedDataType("Hello") = ShortText
-    Debug.Assert GetEnhancedDataType("这是一段很长的文本内容用于测试长文本识别功能") = LongText
+    Debug.Assert GetEnhancedDataType("Hello") = DataType.ShortText
+    Debug.Assert GetEnhancedDataType("这是一段很长的文本内容用于测试长文本识别功能") = DataType.LongText
     Debug.Assert GetEnhancedDataType(123) = IntegerValue
     Debug.Assert GetEnhancedDataType(123.45) = DecimalValue
     Debug.Assert GetEnhancedDataType("50%") = PercentageValue
@@ -1486,7 +1486,7 @@ Private Function TestHeaderPriorityCalculation() As Boolean
     analysis.IsHeaderColumn = True
     analysis.HeaderText = "客户名称"
     analysis.MaxContentWidth = 15
-    analysis.DataType = ShortText
+    analysis.DataType = DataType.ShortText
     
     Dim result As WidthResult
     result = CalculateOptimalWidthWithHeader(analysis)
@@ -2596,7 +2596,7 @@ Private Function CollectPreviewInfo(targetRange As Range) As PreviewInfo
         If analysis.OptimalWidth < minWidth Then minWidth = analysis.OptimalWidth
         
         ' 统计标题列
-        If analysis.IsHeaderColumn Then 
+        If analysis.IsHeaderColumn Then
             headerCount = headerCount + 1
             
             ' 检查是否包含超长文本
@@ -2712,7 +2712,8 @@ Sub TestHeaderCentering()
     ws.Range("A1:D3").Select
     
     ' 应用优化
-    Call OptimizeSelectedLayout
+    ' Call OptimizeSelectedLayout ' Assuming this calls OptimizeLayout or a similar function
+    Call OptimizeLayout
     
     ' 检查结果
     Dim headerRange As Range
@@ -2788,7 +2789,8 @@ Sub TestLongHeaderDisplay()
     ws.Range("A1:E3").Select
     
     ' 应用优化
-    Call OptimizeSelectedLayout
+    ' Call OptimizeSelectedLayout ' Assuming this calls OptimizeLayout or a similar function
+    Call OptimizeLayout
     
     ' 检查结果并生成报告
     Dim resultMsg As String
@@ -2842,7 +2844,7 @@ Private Function GetVisibleRange(inputRange As Range) As Range
     Set GetVisibleRange = visibleCells
     
     Exit Function
-    
+
 ErrorHandler:
     ' 如果没有可见单元格或发生错误，返回Nothing
     Set GetVisibleRange = Nothing
@@ -2932,7 +2934,7 @@ Sub TestHiddenCellsProtection()
     fullReport = fullReport & testResult
     
     MsgBox fullReport, vbInformation, "隐藏行列保护测试结果"
-    
+
     Exit Sub
     
 ErrorHandler:
