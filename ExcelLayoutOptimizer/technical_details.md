@@ -33,11 +33,31 @@ End Type
 #### 1.1.2 配置参数结构扩展
 ```vba
 Private Type OptimizationConfig
-    ' 原有字段...
-    ' 标题相关新增配置
-    HeaderPriority As Boolean     ' 标题优先模式
-    HeaderMaxWrapLines As Long    ' 标题最大换行数
-    HeaderMinHeight As Double     ' 标题最小行高
+    ' 基础宽度控制
+    MinColumnWidth As Double        ' 最小列宽：8.43
+    MaxColumnWidth As Double        ' 最大列宽：120
+    TextBuffer As Double            ' 文本缓冲：3.0
+    NumericBuffer As Double         ' 数值缓冲：2.0
+    DateBuffer As Double            ' 日期缓冲：1.0
+    WrapThreshold As Double         ' 自动换行阈值：100
+    
+    ' 超长文本处理
+    ExtremeTextWidth As Double      ' 超长文本列宽：150
+    VeryLongTextWidth As Double     ' 极长文本列宽：180
+    LongTextThreshold As Long       ' 长文本扩展阈值：100
+    MaxWrapLines As Long            ' 多行换行最大行数：5
+    MaxRowHeight As Double          ' 最大行高：120
+    
+    ' 标题相关配置
+    HeaderPriority As Boolean       ' 标题优先模式：True
+    HeaderMaxWrapLines As Long      ' 标题最大换行数：3
+    HeaderMinHeight As Double       ' 标题最小行高：18
+    
+    ' 智能功能开关
+    SmartHeaderDetection As Boolean ' 智能表头识别：True
+    SmartLineBreak As Boolean       ' 智能断行：True
+    ShowPreview As Boolean          ' 显示预览：True
+    AutoSave As Boolean             ' 自动保存：True
 End Type
 ```
 
@@ -321,11 +341,55 @@ End Sub
 
 ---
 
-## 2. 撤销机制实现
+## 3. 撤销机制实现
 
-### 1.1 状态保存策略
+### 3.1 状态保存策略
 
-#### 1.1.1 数据结构设计
+#### 3.1.1 自维护撤销信息
+```vba
+Private Type CellFormat
+    ColumnWidth As Double
+    WrapText As Boolean
+    HorizontalAlignment As XlHAlign
+    VerticalAlignment As XlVAlign
+    RowHeight As Double
+End Type
+
+Private Type UndoInfo
+    RangeAddress As String
+    WorksheetName As String
+    ColumnFormats() As CellFormat
+    RowHeights() As Double
+    Timestamp As Date
+    Description As String
+End Type
+
+' 全局撤销信息
+Private g_LastUndoInfo As UndoInfo
+Private g_HasUndoInfo As Boolean
+```
+
+#### 3.1.2 Excel撤销菜单集成（可选）
+```vba
+Private Sub RegisterUndoOperation()
+    On Error Resume Next
+    ' 将自定义撤销操作注册到Excel撤销菜单
+    Application.OnUndo "撤销布局优化", "RestoreFromUndo"
+End Sub
+
+Private Sub RestoreFromUndo()
+    ' 执行撤销操作
+    If g_HasUndoInfo Then
+        ' 恢复保存的格式状态
+        ' 清除撤销信息
+        g_HasUndoInfo = False
+        ' 更新菜单
+        Application.OnUndo "", ""
+    End If
+End Sub
+```
+
+#### 3.1.3 状态保存函数（增强）
 ```vba
 Private Type CellFormat
     ColumnWidth As Double

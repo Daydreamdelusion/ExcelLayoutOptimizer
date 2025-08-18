@@ -58,9 +58,9 @@ Private Const NUMERIC_BUFFER_PIXELS As Long = 12
 Private Const DATE_BUFFER_PIXELS As Long = 12
 
 ' 缓冲区设置（字符单位）
-Private Const TEXT_BUFFER_CHARS As Double = 3.0    ' 增加到3.0，提供更多缓冲
-Private Const NUMERIC_BUFFER_CHARS As Double = 2.0
-Private Const DATE_BUFFER_CHARS As Double = 1.0      ' 减少日期缓冲区，因为日期格式已包含空格
+Private Const TEXT_BUFFER_CHARS As Double = 3#     ' 增加到3.0，提供更多缓冲
+Private Const NUMERIC_BUFFER_CHARS As Double = 2#
+Private Const DATE_BUFFER_CHARS As Double = 1#       ' 减少日期缓冲区，因为日期格式已包含空格
 
 ' 字符宽度系数
 Private Const CHINESE_CHAR_WIDTH_FACTOR As Double = 1.2
@@ -89,11 +89,11 @@ Private Const MAX_EXCEL_DATE As Long = 2958465
 ' 数据类型和结构定义
 '--------------------------------------------------
 ' 数据类型枚举（细化版）
-Public Enum DataType
+Public Enum dataType
     EmptyCell = 1
-    ShortText = 2
+    shortText = 2
     MediumText = 3
-    LongText = 4
+    longText = 4
     IntegerValue = 5
     DecimalValue = 6
     CurrencyValue = 7
@@ -109,11 +109,11 @@ End Enum
 
 ' 文本长度分级枚举（新增）
 Public Enum TextLengthCategory
-    ShortText = 1      ' <= 20字符
+    shortText = 1      ' <= 20字符
     MediumText = 2     ' 21-50字符
-    LongText = 3       ' 51-100字符
+    longText = 3       ' 51-100字符
     VeryLongText = 4   ' 101-200字符
-    ExtremeText = 5    ' > 200字符
+    extremeText = 5    ' > 200字符
 End Enum
 
 ' 错误级别枚举
@@ -121,7 +121,7 @@ Public Enum ErrorLevel
     Fatal = 1
     Severe = 2
     Warning = 3
-    Info = 4
+    info = 4
 End Enum
 
 ' 字符统计结构
@@ -134,7 +134,7 @@ Private Type CharCount
 End Type
 
 ' 列宽计算结果
-Private Type WidthResult
+Private Type widthResult
     FinalWidth As Double
     NeedWrap As Boolean
     OriginalWidth As Double
@@ -156,17 +156,17 @@ End Type
 
 ' 列分析结果
 Private Type ColumnAnalysisData
-    ColumnIndex As Long
-    DataType As DataType
+    columnIndex As Long
+    dataType As dataType
     MaxContentWidth As Double
     OptimalWidth As Double
     NeedWrap As Boolean
-    CellCount As Long
+    cellCount As Long
     HasMergedCells As Boolean
     HasErrors As Boolean
-    TypeDistribution(1 To 15) As Long
+    typeDistribution(1 To 15) As Long
     ' 标题相关新增字段
-    HeaderText As String
+    headerText As String
     HeaderWidth As Double
     HeaderNeedWrap As Boolean
     HeaderRowHeight As Double
@@ -175,47 +175,54 @@ End Type
 
 ' 优化统计
 Private Type OptimizationStats
-    TotalColumns As Long
+    totalColumns As Long
     AdjustedColumns As Long
     WrapEnabledColumns As Long
     SkippedColumns As Long
-    ProcessingTime As Double
-    ErrorCount As Long
+    processingTime As Double
+    errorCount As Long
     CacheHits As Long
     ChunksProcessed As Long
 End Type
 
-' 配置参数结构
+' 配置参数结构（完整版）
 Private Type OptimizationConfig
-    MaxColumnWidth As Double
-    MinColumnWidth As Double
-    TextBuffer As Double
-    NumericBuffer As Double
-    WrapThreshold As Double
-    SmartHeaderDetection As Boolean
-    ShowPreview As Boolean
-    AutoSave As Boolean
-    UseCache As Boolean
-    ChunkProcessing As Boolean
-    ' 标题相关新增配置
-    HeaderPriority As Boolean  ' 标题优先模式
-    HeaderMaxWrapLines As Long ' 标题最大换行数
-    HeaderMinHeight As Double  ' 标题最小行高
-    ' 超长文本处理配置（新增）
-    ExtremeTextWidth As Double     ' 极长文本固定宽度
-    LongTextThreshold As Long      ' 长文本阈值（字符数）
-    SmartLineBreak As Boolean      ' 智能断行开关
-    MaxWrapLines As Long          ' 最大换行行数
-    LongTextExtendThreshold As Long ' 长文本扩展阈值
+    ' 基础宽度控制
+    MinColumnWidth As Double        ' 最小列宽：8.43
+    MaxColumnWidth As Double        ' 最大列宽：120
+    TextBuffer As Double            ' 文本缓冲：3.0
+    NumericBuffer As Double         ' 数值缓冲：2.0
+    DateBuffer As Double            ' 日期缓冲：1.0
+    WrapThreshold As Double         ' 自动换行阈值：100
+    
+    ' 超长文本处理
+    ExtremeTextWidth As Double      ' 超长文本列宽：150
+    VeryLongTextWidth As Double     ' 极长文本列宽：180
+    LongTextThreshold As Long       ' 长文本扩展阈值：100
+    MaxWrapLines As Long            ' 多行换行最大行数：5
+    MaxRowHeight As Double          ' 最大行高：120
+    
+    ' 标题相关配置
+    HeaderPriority As Boolean       ' 标题优先模式：True
+    HeaderMaxWrapLines As Long      ' 标题最大换行数：3
+    HeaderMinHeight As Double       ' 标题最小行高：18
+    
+    ' 智能功能开关
+    SmartHeaderDetection As Boolean ' 智能表头识别：True
+    SmartLineBreak As Boolean       ' 智能断行：True
+    ShowPreview As Boolean          ' 显示预览：True
+    AutoSave As Boolean             ' 自动保存：True
+    UseCache As Boolean             ' 使用缓存：True
+    ChunkProcessing As Boolean      ' 分块处理：True
 End Type
 
 ' 单元格格式信息
 Private Type CellFormat
-    ColumnWidth As Double
+    columnWidth As Double
     WrapText As Boolean
     HorizontalAlignment As XlHAlign
     VerticalAlignment As XlVAlign
-    RowHeight As Double
+    rowHeight As Double
 End Type
 
 ' 撤销信息
@@ -229,12 +236,12 @@ Private Type UndoInfo
 End Type
 
 ' 预览信息
-Private Type PreviewInfo
-    TotalColumns As Long
+Private Type previewInfo
+    totalColumns As Long
     ColumnsToAdjust As Long
     ColumnsNeedWrap As Long
     MinWidth As Double
-    MaxWidth As Double
+    maxWidth As Double
     EstimatedTime As Double
     AffectedCells As Long
     HasMergedCells As Boolean
@@ -243,14 +250,14 @@ End Type
 
 ' 缓存结构
 Private Type CellWidthCache
-    Content As String
-    Width As Double
+    content As String
+    width As Double
     Hits As Long
 End Type
 
 ' 错误信息结构
-Private Type ErrorInfo
-    Level As ErrorLevel
+Private Type errorInfo
+    level As ErrorLevel
     Code As Long
     Description As String
     Action As String
@@ -271,9 +278,11 @@ Private g_HasUndoInfo As Boolean
 Private g_CancelOperation As Boolean
 Private g_CheckCounter As Long
 
-' 缓存管理
-Private g_WidthCache() As CellWidthCache
+' 缓存管理（优化版）
+Private g_WidthCacheDict As Object    ' Dictionary缓存（优先）
+Private g_WidthCache() As CellWidthCache  ' 数组缓存（降级）
 Private g_CacheSize As Long
+Private g_UseDictionary As Boolean    ' 是否使用Dictionary
 Private g_CacheHits As Long
 
 ' 性能统计
@@ -340,7 +349,7 @@ Public Sub OptimizeLayout()
     
     ' 预览阶段
     If g_Config.ShowPreview Then
-        Dim previewInfo As PreviewInfo
+        Dim previewInfo As previewInfo
         previewInfo = CollectPreviewInfo(selectedRange)
         
         If ShowPreviewDialog(previewInfo, selectedRange) <> vbYes Then
@@ -394,7 +403,7 @@ RestoreAndExit:
     GoTo CleanExit
     
 ErrorHandler:
-    Dim errorInfo As ErrorInfo
+    Dim errorInfo As errorInfo
     errorInfo = ClassifyError(Err.Number, Err.Description)
     HandleErrorByLevel errorInfo
     
@@ -479,34 +488,81 @@ ErrorHandler:
 End Sub
 
 '--------------------------------------------------
+' 从撤销信息恢复状态
+'--------------------------------------------------
+Private Function RestoreFromUndo() As Boolean
+    On Error GoTo ErrorHandler
+    
+    If Not g_HasUndoInfo Then
+        RestoreFromUndo = False
+        Exit Function
+    End If
+    
+    ' 定位原始区域
+    Dim ws As Worksheet
+    Set ws = Worksheets(g_LastUndoInfo.WorksheetName)
+    Dim targetRange As Range
+    Set targetRange = ws.Range(g_LastUndoInfo.RangeAddress)
+    
+    ' 恢复列格式
+    Dim i As Long
+    For i = 1 To UBound(g_LastUndoInfo.ColumnFormats)
+        With targetRange.Columns(i)
+            .columnWidth = g_LastUndoInfo.ColumnFormats(i).columnWidth
+            .WrapText = g_LastUndoInfo.ColumnFormats(i).WrapText
+            .HorizontalAlignment = g_LastUndoInfo.ColumnFormats(i).HorizontalAlignment
+            .VerticalAlignment = g_LastUndoInfo.ColumnFormats(i).VerticalAlignment
+        End With
+    Next i
+    
+    ' 恢复行高
+    For i = 1 To UBound(g_LastUndoInfo.RowHeights)
+        targetRange.Rows(i).rowHeight = g_LastUndoInfo.RowHeights(i)
+    Next i
+    
+    RestoreFromUndo = True
+    Exit Function
+    
+ErrorHandler:
+    RestoreFromUndo = False
+End Function
+
+'--------------------------------------------------
 ' 保存状态用于撤销
 '--------------------------------------------------
 Private Function SaveStateForUndo(targetRange As Range) As Boolean
     On Error GoTo ErrorHandler
     
+    ' 计算实际需要保存的范围，避免整列选择导致的巨大数组
+    Dim actualRange As Range
+    Set actualRange = GetEffectiveRange(targetRange)
+    
     ' 初始化撤销信息
     With g_LastUndoInfo
-        .RangeAddress = targetRange.Address
-        .WorksheetName = targetRange.Worksheet.Name
+        .RangeAddress = actualRange.Address
+        .WorksheetName = actualRange.Worksheet.Name
         .Timestamp = Now
         .Description = "布局优化操作"
         
         ' 保存列格式信息
-        ReDim .ColumnFormats(1 To targetRange.Columns.Count)
+        ReDim .ColumnFormats(1 To actualRange.Columns.Count)
         Dim i As Long
-        For i = 1 To targetRange.Columns.Count
+        For i = 1 To actualRange.Columns.Count
             With .ColumnFormats(i)
-                .ColumnWidth = targetRange.Columns(i).ColumnWidth
-                .WrapText = targetRange.Columns(i).WrapText
-                .HorizontalAlignment = targetRange.Columns(i).HorizontalAlignment
-                .VerticalAlignment = targetRange.Columns(i).VerticalAlignment
+                .columnWidth = actualRange.Columns(i).columnWidth
+                ' 安全读取可能为 Null 的属性
+                .WrapText = GetSafeWrapText(actualRange.Columns(i))
+                .HorizontalAlignment = GetSafeHorizontalAlignment(actualRange.Columns(i))
+                .VerticalAlignment = GetSafeVerticalAlignment(actualRange.Columns(i))
             End With
         Next i
         
-        ' 保存行高信息
-        ReDim .RowHeights(1 To targetRange.Rows.Count)
-        For i = 1 To targetRange.Rows.Count
-            .RowHeights(i) = targetRange.Rows(i).RowHeight
+        ' 保存行高信息，限制行数避免内存问题
+        Dim rowCount As Long
+        rowCount = actualRange.Rows.Count
+        ReDim .RowHeights(1 To rowCount)
+        For i = 1 To rowCount
+            .RowHeights(i) = actualRange.Rows(i).rowHeight
         Next i
     End With
     
@@ -648,12 +704,22 @@ End Function
 '==================================================
 
 '--------------------------------------------------
-' 初始化缓存
+' 初始化缓存（优化版）
 '--------------------------------------------------
 Private Sub InitializeCache()
     If Not g_Config.UseCache Then Exit Sub
     
-    ReDim g_WidthCache(1 To CACHE_SIZE)
+    ' 尝试使用Dictionary（性能更好）
+    On Error GoTo FallbackToArray
+    Set g_WidthCacheDict = CreateObject("Scripting.Dictionary")
+    g_UseDictionary = True
+    g_CacheHits = 0
+    Exit Sub
+    
+FallbackToArray:
+    ' Dictionary不可用时降级到数组
+    g_UseDictionary = False
+    ReDim g_WidthCache(1 To 512)  ' 增加到512提升性能
     g_CacheSize = 0
     g_CacheHits = 0
 End Sub
@@ -664,8 +730,14 @@ End Sub
 Private Sub ClearCache()
     If Not g_Config.UseCache Then Exit Sub
     
-    Erase g_WidthCache
-    g_CacheSize = 0
+    If g_UseDictionary Then
+        If Not g_WidthCacheDict Is Nothing Then
+            g_WidthCacheDict.RemoveAll
+        End If
+    Else
+        Erase g_WidthCache
+        g_CacheSize = 0
+    End If
     g_CacheHits = 0
 End Sub
 
@@ -704,28 +776,51 @@ Private Function GetCachedWidth(content As String) As Double
         Exit Function
     End If
     
-    ' 查找缓存
+    ' 归一化键值（去除首尾空格）
+    Dim normalizedKey As String
+    normalizedKey = Trim(content)
+    
+    ' Dictionary缓存查找（O(1)）
+    If g_UseDictionary Then
+        If g_WidthCacheDict.Exists(normalizedKey) Then
+            g_CacheHits = g_CacheHits + 1
+            GetCachedWidth = g_WidthCacheDict(normalizedKey)
+            Exit Function
+        End If
+        
+        ' 计算并缓存到Dictionary
+        Dim width As Double
+        width = CalculateTextWidth(content, 11)
+        g_WidthCacheDict(normalizedKey) = width
+        GetCachedWidth = width
+        Exit Function
+    End If
+    
+    ' 降级到数组缓存（O(n)）
     Dim i As Long
     For i = 1 To g_CacheSize
-        If g_WidthCache(i).Content = content Then
+        If g_WidthCache(i).content = normalizedKey Then
             g_WidthCache(i).Hits = g_WidthCache(i).Hits + 1
             g_CacheHits = g_CacheHits + 1
-            GetCachedWidth = g_WidthCache(i).Width
+            GetCachedWidth = g_WidthCache(i).width
             Exit Function
         End If
     Next i
     
-    ' 计算并缓存
-    Dim width As Double
+    ' 计算并缓存到数组
     width = CalculateTextWidth(content, 11)
     
-    ' 添加到缓存
-    If g_CacheSize < CACHE_SIZE Then
+    ' 环形缓冲添加到缓存
+    If g_CacheSize < 512 Then
         g_CacheSize = g_CacheSize + 1
-        g_WidthCache(g_CacheSize).Content = content
-        g_WidthCache(g_CacheSize).Width = width
-        g_WidthCache(g_CacheSize).Hits = 1
+    Else
+        ' 环形缓冲，替换第一个
+        g_CacheSize = 1
     End If
+    
+    g_WidthCache(g_CacheSize).content = normalizedKey
+    g_WidthCache(g_CacheSize).width = width
+    g_WidthCache(g_CacheSize).Hits = 1
     
     GetCachedWidth = width
 End Function
@@ -795,17 +890,409 @@ Private Function SafeReadRangeToArray(targetRange As Range) As Variant
     
     ' 对于单个单元格，直接返回值
     If targetRange.Cells.Count = 1 Then
-        SafeReadRangeToArray = Array(targetRange.Value)
+        SafeReadRangeToArray = Array(targetRange.value)
         Exit Function
     End If
     
     ' 对于多个单元格，返回数组
-    SafeReadRangeToArray = targetRange.Value
+    SafeReadRangeToArray = targetRange.value
     Exit Function
     
 ErrorHandler:
     ' 出错时返回空值
     SafeReadRangeToArray = Empty
+End Function
+
+'--------------------------------------------------
+' 安全获取单元格值
+'--------------------------------------------------
+Private Function SafeGetCellValue(cellValue As Variant) As String
+    On Error GoTo ErrorHandler
+    
+    ' 检查是否为空
+    If IsEmpty(cellValue) Then
+        SafeGetCellValue = ""
+        Exit Function
+    End If
+    
+    ' 检查是否为错误
+    If IsError(cellValue) Then
+        SafeGetCellValue = ""
+        Exit Function
+    End If
+    
+    ' 转换为字符串
+    SafeGetCellValue = CStr(cellValue)
+    Exit Function
+    
+ErrorHandler:
+    SafeGetCellValue = ""
+End Function
+
+'--------------------------------------------------
+' 检查范围是否包含合并单元格
+'--------------------------------------------------
+Private Function HasMergedCells(rng As Range) As Boolean
+    On Error Resume Next
+    
+    ' 检查MergeCells属性
+    HasMergedCells = (rng.MergeCells <> False)
+    
+    ' 如果出错，默认返回False
+    If Err.Number <> 0 Then
+        HasMergedCells = False
+        Err.Clear
+    End If
+End Function
+
+'--------------------------------------------------
+' 获取可见范围
+'--------------------------------------------------
+Private Function GetVisibleRange(inputRange As Range) As Range
+    On Error GoTo ErrorHandler
+    
+    ' 获取可见单元格
+    Dim visibleCells As Range
+    Set visibleCells = inputRange.SpecialCells(xlCellTypeVisible)
+    Set GetVisibleRange = visibleCells
+    
+    Exit Function
+    
+ErrorHandler:
+    ' 如果没有可见单元格或出错，返回Nothing
+    Set GetVisibleRange = Nothing
+End Function
+
+'--------------------------------------------------
+' 安全获取WrapText属性（处理混合值Null问题）
+'--------------------------------------------------
+Private Function GetSafeWrapText(rng As Range) As Boolean
+    On Error GoTo ErrorHandler
+    
+    Dim wrapValue As Variant
+    wrapValue = rng.WrapText
+    
+    ' 检查是否为Null（混合值）
+    If IsNull(wrapValue) Then
+        ' 混合值时，检查第一个非空单元格的设置
+        GetSafeWrapText = GetFirstCellWrapText(rng)
+    Else
+        GetSafeWrapText = CBool(wrapValue)
+    End If
+    Exit Function
+    
+ErrorHandler:
+    ' 出错时返回默认值False
+    GetSafeWrapText = False
+End Function
+
+'--------------------------------------------------
+' 安全获取HorizontalAlignment属性（处理混合值Null问题）
+'--------------------------------------------------
+Private Function GetSafeHorizontalAlignment(rng As Range) As XlHAlign
+    On Error GoTo ErrorHandler
+    
+    Dim alignValue As Variant
+    alignValue = rng.HorizontalAlignment
+    
+    ' 检查是否为Null（混合值）
+    If IsNull(alignValue) Then
+        ' 混合值时，检查第一个非空单元格的设置
+        GetSafeHorizontalAlignment = GetFirstCellHorizontalAlignment(rng)
+    Else
+        GetSafeHorizontalAlignment = CLng(alignValue)
+    End If
+    Exit Function
+    
+ErrorHandler:
+    ' 出错时返回默认值
+    GetSafeHorizontalAlignment = xlGeneral
+End Function
+
+'--------------------------------------------------
+' 安全获取VerticalAlignment属性（处理混合值Null问题）
+'--------------------------------------------------
+Private Function GetSafeVerticalAlignment(rng As Range) As XlVAlign
+    On Error GoTo ErrorHandler
+    
+    Dim alignValue As Variant
+    alignValue = rng.VerticalAlignment
+    
+    ' 检查是否为Null（混合值）
+    If IsNull(alignValue) Then
+        ' 混合值时，检查第一个非空单元格的设置
+        GetSafeVerticalAlignment = GetFirstCellVerticalAlignment(rng)
+    Else
+        GetSafeVerticalAlignment = CLng(alignValue)
+    End If
+    Exit Function
+    
+ErrorHandler:
+    ' 出错时返回默认值
+    GetSafeVerticalAlignment = xlBottom
+End Function
+
+'--------------------------------------------------
+' 获取有效的处理范围（避免整列选择导致的巨大数组）
+'--------------------------------------------------
+Private Function GetEffectiveRange(targetRange As Range) As Range
+    On Error GoTo ErrorHandler
+    
+    Dim ws As Worksheet
+    Set ws = targetRange.Worksheet
+    
+    ' 如果选择了整列或大范围，限制到实际使用范围
+    If targetRange.Rows.Count > 10000 Then
+        ' 获取工作表的使用范围
+        Dim usedRange As Range
+        Set usedRange = ws.UsedRange
+        
+        If Not usedRange Is Nothing Then
+            ' 计算目标范围与使用范围的交集
+            Dim intersectRange As Range
+            Set intersectRange = Application.Intersect(targetRange, usedRange)
+            
+            If Not intersectRange Is Nothing Then
+                Set GetEffectiveRange = intersectRange
+            Else
+                ' 如果没有交集，使用目标范围的前1000行
+                Set GetEffectiveRange = targetRange.Resize(1000)
+            End If
+        Else
+            ' 如果没有使用范围，使用目标范围的前1000行
+            Set GetEffectiveRange = targetRange.Resize(1000)
+        End If
+    Else
+        ' 范围不大，直接使用原范围
+        Set GetEffectiveRange = targetRange
+    End If
+    Exit Function
+    
+ErrorHandler:
+    ' 出错时返回原范围的前1000行
+    Set GetEffectiveRange = targetRange.Resize(1000)
+End Function
+
+'--------------------------------------------------
+' 获取第一个非空单元格的WrapText属性
+'--------------------------------------------------
+Private Function GetFirstCellWrapText(rng As Range) As Boolean
+    On Error GoTo ErrorHandler
+    
+    Dim cell As Range
+    For Each cell In rng.Cells
+        If Not IsEmpty(cell.Value) Then
+            GetFirstCellWrapText = cell.WrapText
+            Exit Function
+        End If
+        ' 只检查前20个单元格，避免性能问题
+        If cell.Row - rng.Row > 20 Then Exit For
+    Next cell
+    
+    ' 没找到非空单元格，返回默认值
+    GetFirstCellWrapText = False
+    Exit Function
+    
+ErrorHandler:
+    GetFirstCellWrapText = False
+End Function
+
+'--------------------------------------------------
+' 获取第一个非空单元格的HorizontalAlignment属性
+'--------------------------------------------------
+Private Function GetFirstCellHorizontalAlignment(rng As Range) As XlHAlign
+    On Error GoTo ErrorHandler
+    
+    Dim cell As Range
+    For Each cell In rng.Cells
+        If Not IsEmpty(cell.Value) Then
+            GetFirstCellHorizontalAlignment = cell.HorizontalAlignment
+            Exit Function
+        End If
+        ' 只检查前20个单元格，避免性能问题
+        If cell.Row - rng.Row > 20 Then Exit For
+    Next cell
+    
+    ' 没找到非空单元格，返回默认值
+    GetFirstCellHorizontalAlignment = xlGeneral
+    Exit Function
+    
+ErrorHandler:
+    GetFirstCellHorizontalAlignment = xlGeneral
+End Function
+
+'--------------------------------------------------
+' 获取第一个非空单元格的VerticalAlignment属性
+'--------------------------------------------------
+Private Function GetFirstCellVerticalAlignment(rng As Range) As XlVAlign
+    On Error GoTo ErrorHandler
+    
+    Dim cell As Range
+    For Each cell In rng.Cells
+        If Not IsEmpty(cell.Value) Then
+            GetFirstCellVerticalAlignment = cell.VerticalAlignment
+            Exit Function
+        End If
+        ' 只检查前20个单元格，避免性能问题
+        If cell.Row - rng.Row > 20 Then Exit For
+    Next cell
+    
+    ' 没找到非空单元格，返回默认值
+    GetFirstCellVerticalAlignment = xlBottom
+    Exit Function
+    
+ErrorHandler:
+    GetFirstCellVerticalAlignment = xlBottom
+End Function
+
+'--------------------------------------------------
+' 增强的数值检测函数 - 支持更多数值格式
+'--------------------------------------------------
+Private Function IsEnhancedNumeric(cellValue As Variant) As Boolean
+    On Error GoTo ErrorHandler
+    
+    ' 首先检查标准的 IsNumeric
+    If IsNumeric(cellValue) Then
+        IsEnhancedNumeric = True
+        Exit Function
+    End If
+    
+    ' 转换为字符串进行进一步检测
+    Dim strValue As String
+    strValue = Trim(CStr(cellValue))
+    
+    ' 空字符串不是数值
+    If strValue = "" Then
+        IsEnhancedNumeric = False
+        Exit Function
+    End If
+    
+    ' 清理字符串，移除常见的非数值字符但保留数值结构
+    Dim cleanedValue As String
+    cleanedValue = CleanNumericString(strValue)
+    
+    ' 检查清理后的字符串是否为数值
+    If cleanedValue <> "" And IsNumeric(cleanedValue) Then
+        IsEnhancedNumeric = True
+    Else
+        IsEnhancedNumeric = False
+    End If
+    Exit Function
+    
+ErrorHandler:
+    IsEnhancedNumeric = False
+End Function
+
+'--------------------------------------------------
+' 清理数值字符串 - 移除空格、分隔符等但保留数值结构
+'--------------------------------------------------
+Private Function CleanNumericString(inputStr As String) As String
+    On Error GoTo ErrorHandler
+    
+    Dim result As String
+    Dim i As Long
+    Dim char As String
+    Dim hasDecimalPoint As Boolean
+    Dim hasNegativeSign As Boolean
+    Dim charCode As Long
+    
+    result = ""
+    hasDecimalPoint = False
+    hasNegativeSign = False
+    
+    For i = 1 To Len(inputStr)
+        char = Mid(inputStr, i, 1)
+        charCode = Asc(char)
+        
+        Select Case char
+            Case "0" To "9"
+                ' 数字字符，直接添加
+                result = result & char
+                
+            Case "."
+                ' 小数点，只允许一个
+                If Not hasDecimalPoint Then
+                    result = result & char
+                    hasDecimalPoint = True
+                End If
+                
+            Case "-"
+                ' 负号，只在开头允许
+                If i = 1 Or (i = 2 And Mid(inputStr, 1, 1) = "(") Then
+                    If Not hasNegativeSign Then
+                        result = result & char
+                        hasNegativeSign = True
+                    End If
+                End If
+                
+            Case "+", " ", Chr(160), Chr(32)
+                ' 正号、普通空格、不换行空格 - 忽略
+                ' 不添加到结果中
+                
+            Case ",", " ", Chr(160)
+                ' 千位分隔符（逗号、空格） - 如果在数字之间则忽略
+                If Len(result) > 0 And i < Len(inputStr) Then
+                    Dim nextChar As String
+                    nextChar = Mid(inputStr, i + 1, 1)
+                    If nextChar >= "0" And nextChar <= "9" Then
+                        ' 下一个字符是数字，这可能是千位分隔符，忽略
+                    Else
+                        ' 不是千位分隔符，结束处理
+                        Exit For
+                    End If
+                End If
+                
+            Case "(", ")"
+                ' 括号负数格式，如 "(40)"
+                If i = 1 And char = "(" Then
+                    ' 开始括号，添加负号
+                    result = "-" & result
+                    hasNegativeSign = True
+                ElseIf i = Len(inputStr) And char = ")" And Mid(inputStr, 1, 1) = "(" Then
+                    ' 结束括号，忽略
+                Else
+                    ' 其他位置的括号，不是数值
+                    result = ""
+                    Exit For
+                End If
+                
+            Case "０" To "９"
+                ' 全角数字转换为半角
+                Dim fullWidthDigit As Long
+                fullWidthDigit = charCode - Asc("０") + Asc("0")
+                result = result & Chr(fullWidthDigit)
+                
+            Case "．"
+                ' 全角小数点
+                If Not hasDecimalPoint Then
+                    result = result & "."
+                    hasDecimalPoint = True
+                End If
+                
+            Case Else
+                ' 其他字符，检查是否是货币符号或百分号
+                If char = "%" Or char = "$" Or char = "￥" Or char = "€" Or char = "£" Then
+                    ' 货币符号和百分号在最后，继续处理
+                    If i = Len(inputStr) Then
+                        ' 在最后，可以接受
+                    Else
+                        ' 不在最后，不是数值
+                        result = ""
+                        Exit For
+                    End If
+                Else
+                    ' 无法识别的字符，不是数值
+                    result = ""
+                    Exit For
+                End If
+        End Select
+    Next i
+    
+    CleanNumericString = result
+    Exit Function
+    
+ErrorHandler:
+    CleanNumericString = ""
 End Function
 
 '--------------------------------------------------
@@ -836,41 +1323,82 @@ End Sub
 '==================================================
 
 '--------------------------------------------------
+' 分析所有列
+'--------------------------------------------------
+Private Function AnalyzeAllColumns(dataArray As Variant, targetRange As Range) As ColumnAnalysisData()
+    On Error GoTo ErrorHandler
+    
+    Dim colCount As Long
+    colCount = targetRange.Columns.Count
+    
+    Dim rowCount As Long
+    If IsArray(dataArray) Then
+        rowCount = UBound(dataArray, 1)
+    Else
+        rowCount = 1
+    End If
+    
+    ' 初始化结果数组
+    Dim analyses() As ColumnAnalysisData
+    ReDim analyses(1 To colCount)
+    
+    ' 分析每一列
+    Dim col As Long
+    For col = 1 To colCount
+        ' 检查中断
+        If g_CheckCounter Mod 10 = 0 And CheckForCancel() Then
+            Exit For
+        End If
+        
+        analyses(col) = AnalyzeColumnEnhanced(dataArray, col, rowCount, targetRange.Columns(col))
+        g_CheckCounter = g_CheckCounter + 1
+    Next col
+    
+    AnalyzeAllColumns = analyses
+    Exit Function
+    
+ErrorHandler:
+    ' 返回空数组
+    ReDim analyses(1 To 1)
+    AnalyzeAllColumns = analyses
+End Function
+
+'--------------------------------------------------
 ' 增强的列分析
 '--------------------------------------------------
 Private Function AnalyzeColumnEnhanced(dataArray As Variant, columnIndex As Long, rowCount As Long, columnRange As Range) As ColumnAnalysisData
     Dim analysis As ColumnAnalysisData
     Dim row As Long
     Dim cellValue As Variant
-    Dim cellDataType As DataType
+    Dim cellDataType As dataType
     Dim cellWidth As Double
     Dim maxWidth As Double
     
-    analysis.ColumnIndex = columnIndex
-    analysis.CellCount = 0
+    analysis.columnIndex = columnIndex
+    analysis.cellCount = 0
     analysis.HasMergedCells = HasMergedCells(columnRange)
     analysis.HasErrors = False
     maxWidth = 0
     
     ' 初始化标题相关字段
     analysis.IsHeaderColumn = False
-    analysis.HeaderText = ""
+    analysis.headerText = ""
     analysis.HeaderWidth = 0
     analysis.HeaderNeedWrap = False
     analysis.HeaderRowHeight = g_Config.HeaderMinHeight
     
     ' 检查是否为隐藏列，如果是隐藏列则跳过处理
     If columnRange.Hidden Then
-        analysis.DataType = DataType.ShortText
-        analysis.MaxContentWidth = columnRange.ColumnWidth ' 保持原始宽度
-        analysis.OptimalWidth = columnRange.ColumnWidth
+        analysis.dataType = dataType.shortText
+        analysis.MaxContentWidth = columnRange.columnWidth ' 保持原始宽度
+        analysis.OptimalWidth = columnRange.columnWidth
         analysis.NeedWrap = False
         AnalyzeColumnEnhanced = analysis
         Exit Function
     End If
     
     If analysis.HasMergedCells Then
-        analysis.DataType = DataType.ShortText
+        analysis.dataType = dataType.shortText
         analysis.MaxContentWidth = 0
         analysis.OptimalWidth = 0
         analysis.NeedWrap = False
@@ -927,15 +1455,15 @@ Private Function AnalyzeColumnEnhanced(dataArray As Variant, columnIndex As Long
             
             If isLikelyHeader Then
                 analysis.IsHeaderColumn = True
-                analysis.HeaderText = headerText
-                analysis.HeaderWidth = AnalyzeHeaderWidth(analysis.HeaderText, g_Config.MaxColumnWidth)
+                analysis.headerText = headerText
+                analysis.HeaderWidth = AnalyzeHeaderWidth(analysis.headerText, g_Config.MaxColumnWidth)
                 
                 ' 判断标题是否需要换行
                 Dim headerTextWidth As Double
-                headerTextWidth = CalculateTextWidth(analysis.HeaderText, 12) ' 使用12号字体计算
+                headerTextWidth = CalculateTextWidth(analysis.headerText, 12) ' 使用12号字体计算
                 If headerTextWidth + g_Config.TextBuffer > g_Config.MaxColumnWidth Then
                     analysis.HeaderNeedWrap = True
-                    analysis.HeaderRowHeight = CalculateHeaderRowHeight(analysis.HeaderText, g_Config.MaxColumnWidth)
+                    analysis.HeaderRowHeight = CalculateHeaderRowHeight(analysis.headerText, g_Config.MaxColumnWidth)
                 End If
             End If
         End If
@@ -953,11 +1481,11 @@ Private Function AnalyzeColumnEnhanced(dataArray As Variant, columnIndex As Long
         End If
         
         If Not IsEmpty(cellValue) And cellValue <> "" Then
-            analysis.CellCount = analysis.CellCount + 1
+            analysis.cellCount = analysis.cellCount + 1
             
             ' 获取细化的数据类型
             cellDataType = GetEnhancedDataType(cellValue)
-            analysis.TypeDistribution(cellDataType) = analysis.TypeDistribution(cellDataType) + 1
+            analysis.typeDistribution(cellDataType) = analysis.typeDistribution(cellDataType) + 1
             
             If cellDataType = ErrorValue Then
                 analysis.HasErrors = True
@@ -973,11 +1501,11 @@ Private Function AnalyzeColumnEnhanced(dataArray As Variant, columnIndex As Long
     Next row
     
     ' 确定主导数据类型
-    analysis.DataType = DetermineColumnTypeEnhanced(analysis.TypeDistribution)
+    analysis.dataType = DetermineColumnTypeEnhanced(analysis.typeDistribution)
     
     ' 计算最优列宽（使用标题优先算法）
     analysis.MaxContentWidth = maxWidth
-    Dim widthResult As WidthResult
+    Dim widthResult As widthResult
     widthResult = CalculateOptimalWidthWithHeader(analysis)
     analysis.OptimalWidth = widthResult.FinalWidth
     analysis.NeedWrap = widthResult.NeedWrap
@@ -988,7 +1516,7 @@ End Function
 '--------------------------------------------------
 ' 获取增强的数据类型
 '--------------------------------------------------
-Private Function GetEnhancedDataType(cellValue As Variant) As DataType
+Private Function GetEnhancedDataType(cellValue As Variant) As dataType
     If IsError(cellValue) Then
         GetEnhancedDataType = ErrorValue
         Exit Function
@@ -1020,14 +1548,14 @@ Private Function GetEnhancedDataType(cellValue As Variant) As DataType
         Exit Function
     End If
     
-    ' 数值检测
-    If IsNumeric(cellValue) Then
+    ' 增强的数值检测 - 支持更多数值格式
+    If IsEnhancedNumeric(cellValue) Then
         Dim numStr As String
         numStr = CStr(cellValue)
         
         If InStr(numStr, "%") > 0 Then
             GetEnhancedDataType = PercentageValue
-        ElseIf InStr(numStr, "$") > 0 Or InStr(numStr, "¥") > 0 Or InStr(numStr, "€") > 0 Then
+        ElseIf InStr(numStr, "$") > 0 Or InStr(numStr, "￥") > 0 Or InStr(numStr, "€") > 0 Then
             GetEnhancedDataType = CurrencyValue
         ElseIf InStr(numStr, ".") > 0 Then
             GetEnhancedDataType = DecimalValue
@@ -1042,53 +1570,178 @@ Private Function GetEnhancedDataType(cellValue As Variant) As DataType
     textLen = Len(CStr(cellValue))
     
     If textLen <= 10 Then
-        GetEnhancedDataType = DataType.ShortText
+        GetEnhancedDataType = dataType.shortText
     ElseIf textLen <= 50 Then
-        GetEnhancedDataType = DataType.MediumText
+        GetEnhancedDataType = dataType.MediumText
     Else
-        GetEnhancedDataType = DataType.LongText
+        GetEnhancedDataType = dataType.longText
     End If
 End Function
 
 '--------------------------------------------------
-' 确定增强的列类型
+' 确定增强的列类型（基于主导类型占比，70%阈值）
 '--------------------------------------------------
-Private Function DetermineColumnTypeEnhanced(typeDistribution() As Long) As DataType
-    Dim maxCount As Long
-    Dim dominantType As DataType
+Private Function DetermineColumnTypeEnhanced(typeDistribution() As Long) As dataType
+    On Error GoTo ErrorHandler
+    
+    ' 计算总的有效单元格数（排除空单元格和错误值）
+    Dim totalCells As Long
     Dim i As Long
+    totalCells = 0
     
-    maxCount = 0
-    dominantType = DataType.ShortText
-    
-    ' 找出主导类型
-    For i = 1 To 15
+    ' 使用边界安全的遍历方式
+    For i = LBound(typeDistribution) To UBound(typeDistribution)
         If i <> EmptyCell And i <> ErrorValue Then
-            If typeDistribution(i) > maxCount Then
-                maxCount = typeDistribution(i)
-                dominantType = i
-            End If
+            totalCells = totalCells + typeDistribution(i)
         End If
     Next i
     
-    ' 特殊规则
-    ' 如果有长文本，整列按长文本处理
-    If typeDistribution(DataType.LongText) > 0 Then
-        dominantType = DataType.LongText
-    ' 如果混合了文本和数值，按混合内容处理
-    ElseIf (typeDistribution(DataType.ShortText) + typeDistribution(DataType.MediumText) > 0) And _
-           (typeDistribution(IntegerValue) + typeDistribution(DecimalValue) > 0) Then
-        dominantType = MixedContent
+    ' 如果没有有效数据，返回短文本
+    If totalCells = 0 Then
+        DetermineColumnTypeEnhanced = dataType.shortText
+        Exit Function
     End If
     
-    DetermineColumnTypeEnhanced = dominantType
+    ' 定义主导类型阈值（70%）
+    Const DOMINANT_THRESHOLD As Double = 0.7
+    
+    ' 特殊规则：如果有长文本且占比超过30%，整列按长文本处理
+    If typeDistribution(dataType.longText) > 0 And _
+       (typeDistribution(dataType.longText) / totalCells) >= 0.3 Then
+        DetermineColumnTypeEnhanced = dataType.longText
+        Exit Function
+    End If
+    
+    ' 计算数值类型总数（包括各种数值子类型）
+    Dim numericCount As Long
+    numericCount = typeDistribution(IntegerValue) + typeDistribution(DecimalValue) + _
+                   typeDistribution(CurrencyValue) + typeDistribution(PercentageValue)
+    
+    ' 计算文本类型总数
+    Dim textCount As Long
+    textCount = typeDistribution(dataType.shortText) + typeDistribution(dataType.MediumText)
+    
+    ' 计算日期类型总数
+    Dim dateCount As Long
+    dateCount = typeDistribution(DateValue) + typeDistribution(TimeValue) + typeDistribution(DateTimeValue)
+    
+    ' 其他类型
+    Dim boolCount As Long
+    boolCount = typeDistribution(BooleanValue)
+    
+    ' 基于主导类型占比决策
+    Dim numericRatio As Double, textRatio As Double, dateRatio As Double, boolRatio As Double
+    numericRatio = numericCount / totalCells
+    textRatio = textCount / totalCells
+    dateRatio = dateCount / totalCells
+    boolRatio = boolCount / totalCells
+    
+    ' 1. 数值主导（>=70%）
+    If numericRatio >= DOMINANT_THRESHOLD Then
+        ' 在数值类型中找出最多的子类型
+        Dim maxNumericCount As Long
+        Dim dominantNumericType As dataType
+        maxNumericCount = 0
+        dominantNumericType = IntegerValue
+        
+        If typeDistribution(IntegerValue) > maxNumericCount Then
+            maxNumericCount = typeDistribution(IntegerValue)
+            dominantNumericType = IntegerValue
+        End If
+        If typeDistribution(DecimalValue) > maxNumericCount Then
+            maxNumericCount = typeDistribution(DecimalValue)
+            dominantNumericType = DecimalValue
+        End If
+        If typeDistribution(CurrencyValue) > maxNumericCount Then
+            maxNumericCount = typeDistribution(CurrencyValue)
+            dominantNumericType = CurrencyValue
+        End If
+        If typeDistribution(PercentageValue) > maxNumericCount Then
+            maxNumericCount = typeDistribution(PercentageValue)
+            dominantNumericType = PercentageValue
+        End If
+        
+        DetermineColumnTypeEnhanced = dominantNumericType
+        Exit Function
+    End If
+    
+    ' 2. 日期主导（>=70%）
+    If dateRatio >= DOMINANT_THRESHOLD Then
+        ' 在日期类型中找出最多的子类型
+        Dim maxDateCount As Long
+        Dim dominantDateType As dataType
+        maxDateCount = 0
+        dominantDateType = DateValue
+        
+        If typeDistribution(DateValue) > maxDateCount Then
+            maxDateCount = typeDistribution(DateValue)
+            dominantDateType = DateValue
+        End If
+        If typeDistribution(TimeValue) > maxDateCount Then
+            maxDateCount = typeDistribution(TimeValue)
+            dominantDateType = TimeValue
+        End If
+        If typeDistribution(DateTimeValue) > maxDateCount Then
+            maxDateCount = typeDistribution(DateTimeValue)
+            dominantDateType = DateTimeValue
+        End If
+        
+        DetermineColumnTypeEnhanced = dominantDateType
+        Exit Function
+    End If
+    
+    ' 3. 文本主导（>=70%）
+    If textRatio >= DOMINANT_THRESHOLD Then
+        ' 在文本类型中找出最多的子类型
+        If typeDistribution(dataType.shortText) >= typeDistribution(dataType.MediumText) Then
+            DetermineColumnTypeEnhanced = dataType.shortText
+        Else
+            DetermineColumnTypeEnhanced = dataType.MediumText
+        End If
+        Exit Function
+    End If
+    
+    ' 4. 布尔主导（>=70%）
+    If boolRatio >= DOMINANT_THRESHOLD Then
+        DetermineColumnTypeEnhanced = BooleanValue
+        Exit Function
+    End If
+    
+    ' 5. 没有明确主导类型，采用宽松的主导规则（>=50%）
+    If numericRatio >= 0.5 Then
+        ' 数值占一半以上，仍然按数值处理
+        If typeDistribution(DecimalValue) > typeDistribution(IntegerValue) Then
+            DetermineColumnTypeEnhanced = DecimalValue
+        Else
+            DetermineColumnTypeEnhanced = IntegerValue
+        End If
+        Exit Function
+    End If
+    
+    If dateRatio >= 0.5 Then
+        DetermineColumnTypeEnhanced = DateValue
+        Exit Function
+    End If
+    
+    If textRatio >= 0.5 Then
+        DetermineColumnTypeEnhanced = dataType.shortText
+        Exit Function
+    End If
+    
+    ' 6. 真正的混合内容（没有任何类型占主导地位）
+    DetermineColumnTypeEnhanced = MixedContent
+    Exit Function
+    
+ErrorHandler:
+    ' 出错时返回短文本
+    DetermineColumnTypeEnhanced = dataType.shortText
 End Function
 
 '--------------------------------------------------
 ' 计算增强的最优宽度
 '--------------------------------------------------
-Private Function CalculateOptimalWidthEnhanced(contentWidth As Double, dataType As DataType) As WidthResult
-    Dim result As WidthResult
+Private Function CalculateOptimalWidthEnhanced(contentWidth As Double, dataType As dataType) As widthResult
+    Dim result As widthResult
     Dim buffer As Double
     Dim calculatedWidth As Double
     
@@ -1098,9 +1751,9 @@ Private Function CalculateOptimalWidthEnhanced(contentWidth As Double, dataType 
     
     ' 根据数据类型确定缓冲区
     Select Case dataType
-        Case DataType.ShortText, DataType.MediumText
+        Case dataType.shortText, dataType.MediumText
             buffer = g_Config.TextBuffer
-        Case DataType.LongText
+        Case dataType.longText
             buffer = g_Config.TextBuffer * 1.5
         Case IntegerValue, DecimalValue
             buffer = g_Config.NumericBuffer
@@ -1151,27 +1804,27 @@ End Function
 '--------------------------------------------------
 ' 错误分类
 '--------------------------------------------------
-Private Function ClassifyError(errorCode As Long, errorDesc As String) As ErrorInfo
-    Dim info As ErrorInfo
+Private Function ClassifyError(errorCode As Long, errorDesc As String) As errorInfo
+    Dim info As errorInfo
     
     info.Code = errorCode
     info.Description = errorDesc
     
     Select Case errorCode
         Case 1004 ' 应用程序定义或对象定义错误
-            info.Level = Fatal
+            info.level = Fatal
             info.Action = "终止操作"
         Case 13 ' 类型不匹配
-            info.Level = Severe
+            info.level = Severe
             info.Action = "跳过当前项"
         Case 18 ' 用户中断
-            info.Level = Info
+            info.level = info
             info.Action = "取消操作"
         Case 6 ' 溢出
-            info.Level = Warning
+            info.level = Warning
             info.Action = "使用默认值"
         Case Else
-            info.Level = Warning
+            info.level = Warning
             info.Action = "记录并继续"
     End Select
     
@@ -1181,10 +1834,10 @@ End Function
 '--------------------------------------------------
 ' 按级别处理错误
 '--------------------------------------------------
-Private Sub HandleErrorByLevel(errorInfo As ErrorInfo)
+Private Sub HandleErrorByLevel(errorInfo As errorInfo)
     Dim message As String
     
-    Select Case errorInfo.Level
+    Select Case errorInfo.level
         Case Fatal
             message = "致命错误：" & errorInfo.Description & vbCrLf
             message = message & "操作已终止"
@@ -1199,7 +1852,7 @@ Private Sub HandleErrorByLevel(errorInfo As ErrorInfo)
             ' 记录警告，不中断
             Debug.Print "警告: " & errorInfo.Description
             
-        Case Info
+        Case info
             ' 信息级别，静默处理
             Debug.Print "信息: " & errorInfo.Description
     End Select
@@ -1214,26 +1867,33 @@ End Sub
 '--------------------------------------------------
 Private Sub InitializeDefaultConfig()
     With g_Config
-        .MinColumnWidth = DEFAULT_MIN_COLUMN_WIDTH
-        .MaxColumnWidth = DEFAULT_MAX_COLUMN_WIDTH
-        .TextBuffer = 3.0  ' 增加到3.0
-        .NumericBuffer = NUMERIC_BUFFER_CHARS
-        .WrapThreshold = 80  ' 调整换行阈值
-        .SmartHeaderDetection = True
-        .ShowPreview = True
-        .AutoSave = True
-        .UseCache = True
-        .ChunkProcessing = True
-        ' 标题相关新增配置
-        .HeaderPriority = True      ' 启用标题优先模式
-        .HeaderMaxWrapLines = 3     ' 标题最大换行3行
-        .HeaderMinHeight = 15       ' 标题最小行高
-        ' 超长文本处理配置（新增）
-        .ExtremeTextWidth = EXTREME_TEXT_WIDTH       ' 极长文本固定宽度
-        .LongTextThreshold = LONG_TEXT_THRESHOLD     ' 长文本阈值
-        .SmartLineBreak = True                       ' 启用智能断行
-        .MaxWrapLines = 5                            ' 最大换行行数（增加到5行）
-        .LongTextExtendThreshold = LONG_TEXT_THRESHOLD ' 长文本扩展阈值
+        ' 基础宽度控制（使用统一的默认值）
+        .MinColumnWidth = DEFAULT_MIN_COLUMN_WIDTH    ' 8.43
+        .MaxColumnWidth = 120                         ' 提升到120
+        .TextBuffer = 3#                              ' 文本缓冲3.0
+        .NumericBuffer = 2#                           ' 数值缓冲2.0
+        .DateBuffer = 1#                              ' 日期缓冲1.0
+        .WrapThreshold = 100                          ' 换行阈值100
+        
+        ' 超长文本处理
+        .ExtremeTextWidth = 150                       ' 超长文本列宽
+        .VeryLongTextWidth = 180                      ' 极长文本列宽
+        .LongTextThreshold = 100                      ' 长文本阈值
+        .MaxWrapLines = 5                             ' 最大换行行数
+        .MaxRowHeight = 120                           ' 最大行高
+        
+        ' 标题相关配置
+        .HeaderPriority = True                        ' 标题优先模式
+        .HeaderMaxWrapLines = 3                       ' 标题最大换行数
+        .HeaderMinHeight = 18                         ' 标题最小行高
+        
+        ' 智能功能开关
+        .SmartHeaderDetection = True                  ' 智能表头识别
+        .SmartLineBreak = True                        ' 智能断行
+        .ShowPreview = True                           ' 显示预览
+        .AutoSave = True                              ' 自动保存
+        .UseCache = True                              ' 使用缓存
+        .ChunkProcessing = True                       ' 分块处理
     End With
     g_ConfigInitialized = True
 End Sub
@@ -1262,7 +1922,7 @@ Private Sub SaveConfigToWorkbook()
     props.Add Name:="ExcelOptimizer_Config", _
               LinkToContent:=False, _
               Type:=msoPropertyTypeString, _
-              Value:=configStr
+              value:=configStr
 End Sub
 
 '--------------------------------------------------
@@ -1272,7 +1932,7 @@ Private Sub LoadConfigFromWorkbook()
     On Error Resume Next
     
     Dim configStr As String
-    configStr = ThisWorkbook.CustomDocumentProperties("ExcelOptimizer_Config").Value
+    configStr = ThisWorkbook.CustomDocumentProperties("ExcelOptimizer_Config").value
     
     If configStr <> "" Then
         Dim parts() As String
@@ -1339,17 +1999,17 @@ End Function
 '--------------------------------------------------
 ' 收集预览信息
 '--------------------------------------------------
-Private Function CollectPreviewInfo(targetRange As Range) As PreviewInfo
-    Dim info As PreviewInfo
+Private Function CollectPreviewInfo(targetRange As Range) As previewInfo
+    Dim info As previewInfo
     On Error GoTo ErrorHandler
     
     With info
-        .TotalColumns = targetRange.Columns.Count
+        .totalColumns = targetRange.Columns.Count
         .AffectedCells = targetRange.Cells.Count
-        .ColumnsToAdjust = .TotalColumns ' 简化：假设所有列都会调整
+        .ColumnsToAdjust = .totalColumns ' 简化：假设所有列都会调整
         .ColumnsNeedWrap = 0
         .MinWidth = g_Config.MinColumnWidth
-        .MaxWidth = g_Config.MaxColumnWidth
+        .maxWidth = g_Config.MaxColumnWidth
         .HasMergedCells = (targetRange.MergeCells <> False)
         .HasFormulas = False
         
@@ -1374,7 +2034,7 @@ Private Function CollectPreviewInfo(targetRange As Range) As PreviewInfo
 ErrorHandler:
     ' 返回默认值
     With info
-        .TotalColumns = 1
+        .totalColumns = 1
         .EstimatedTime = 1
     End With
     CollectPreviewInfo = info
@@ -1383,28 +2043,28 @@ End Function
 '--------------------------------------------------
 ' 显示预览对话框
 '--------------------------------------------------
-Private Function ShowPreviewDialog(info As PreviewInfo, targetRange As Range) As VbMsgBoxResult
+Private Function ShowPreviewDialog(info As previewInfo, targetRange As Range) As VbMsgBoxResult
     Dim message As String
     
     message = "布局优化预览" & vbCrLf & vbCrLf
     message = message & "优化区域: " & targetRange.Address & vbCrLf
     message = message & String(40, "-") & vbCrLf
-    message = message & "• 总列数: " & info.TotalColumns & vbCrLf
-    message = message & "• 需调整: " & info.ColumnsToAdjust & " 列" & vbCrLf
+    message = message & "? 总列数: " & info.totalColumns & vbCrLf
+    message = message & "? 需调整: " & info.ColumnsToAdjust & " 列" & vbCrLf
     
     If info.ColumnsNeedWrap > 0 Then
-        message = message & "• 需换行: " & info.ColumnsNeedWrap & " 列" & vbCrLf
+        message = message & "? 需换行: " & info.ColumnsNeedWrap & " 列" & vbCrLf
     End If
     
-    message = message & "• 宽度范围: " & Format(info.MinWidth, "0.0") & _
-              " - " & Format(info.MaxWidth, "0.0") & vbCrLf
+    message = message & "? 宽度范围: " & Format(info.MinWidth, "0.0") & _
+              " - " & Format(info.maxWidth, "0.0") & vbCrLf
     
     If info.HasMergedCells Then
-        message = message & "• 警告: 包含合并单元格（将跳过）" & vbCrLf
+        message = message & "? 警告: 包含合并单元格（将跳过）" & vbCrLf
     End If
     
     If info.HasFormulas Then
-        message = message & "• 提示: 包含公式" & vbCrLf
+        message = message & "? 提示: 包含公式" & vbCrLf
     End If
     
     message = message & String(40, "-") & vbCrLf
@@ -1494,18 +2154,19 @@ End Sub
 Private Function GenerateEnhancedStatistics(targetRange As Range, processingTime As Double) As OptimizationStats
     Dim stats As OptimizationStats
     
-    stats.TotalColumns = targetRange.Columns.Count
-    stats.ProcessingTime = processingTime
+    stats.totalColumns = targetRange.Columns.Count
+    stats.processingTime = processingTime
     stats.CacheHits = g_CacheHits
     stats.ChunksProcessed = g_ChunksProcessed
     
     ' 其他统计信息通过遍历获取
     Dim col As Long
-    For col = 1 To stats.TotalColumns
+    For col = 1 To stats.totalColumns
         If targetRange.Columns(col).Hidden = False Then
             stats.AdjustedColumns = stats.AdjustedColumns + 1
             
-            If targetRange.Columns(col).WrapText Then
+            ' 安全检查WrapText属性，避免混合值Null错误
+            If GetSafeWrapText(targetRange.Columns(col)) Then
                 stats.WrapEnabledColumns = stats.WrapEnabledColumns + 1
             End If
         Else
@@ -1518,7 +2179,7 @@ Private Function GenerateEnhancedStatistics(targetRange As Range, processingTime
     On Error Resume Next
     errorCount = targetRange.SpecialCells(xlCellTypeFormulas, xlErrors).Count
     On Error GoTo 0
-    stats.ErrorCount = errorCount
+    stats.errorCount = errorCount
     
     GenerateEnhancedStatistics = stats
 End Function
@@ -1531,28 +2192,28 @@ Private Sub ShowCompletionMessageEnhanced(stats As OptimizationStats)
     
     message = "优化完成！" & vbCrLf & vbCrLf
     message = message & "【处理统计】" & vbCrLf
-    message = message & "• 处理列数：" & stats.TotalColumns & " 列" & vbCrLf
-    message = message & "• 调整列数：" & stats.AdjustedColumns & " 列" & vbCrLf
-    message = message & "• 启用换行：" & stats.WrapEnabledColumns & " 列" & vbCrLf
+    message = message & "? 处理列数：" & stats.totalColumns & " 列" & vbCrLf
+    message = message & "? 调整列数：" & stats.AdjustedColumns & " 列" & vbCrLf
+    message = message & "? 启用换行：" & stats.WrapEnabledColumns & " 列" & vbCrLf
     
     If stats.SkippedColumns > 0 Then
-        message = message & "• 跳过列数：" & stats.SkippedColumns & " 列" & vbCrLf
+        message = message & "? 跳过列数：" & stats.SkippedColumns & " 列" & vbCrLf
     End If
     
     message = message & vbCrLf & "【性能指标】" & vbCrLf
-    message = message & "• 处理时间：" & Format(stats.ProcessingTime, "0.00") & " 秒" & vbCrLf
+    message = message & "? 处理时间：" & Format(stats.processingTime, "0.00") & " 秒" & vbCrLf
     
     If g_Config.UseCache Then
-        message = message & "• 缓存命中：" & stats.CacheHits & " 次" & vbCrLf
+        message = message & "? 缓存命中：" & stats.CacheHits & " 次" & vbCrLf
     End If
     
     If g_Config.ChunkProcessing And stats.ChunksProcessed > 0 Then
-        message = message & "• 处理块数：" & stats.ChunksProcessed & " 块" & vbCrLf
+        message = message & "? 处理块数：" & stats.ChunksProcessed & " 块" & vbCrLf
     End If
     
-    If stats.ErrorCount > 0 Then
+    If stats.errorCount > 0 Then
         message = message & vbCrLf & "【警告】" & vbCrLf
-        message = message & "• 错误单元格：" & stats.ErrorCount & " 个" & vbCrLf
+        message = message & "? 错误单元格：" & stats.errorCount & " 个" & vbCrLf
     End If
     
     message = message & vbCrLf & "提示：可使用 UndoLastOptimization 撤销本次操作"
@@ -1578,64 +2239,64 @@ Public Sub RunTestSuite()
     ' 测试1：数据类型识别
     If TestDataTypeDetection() Then
         passCount = passCount + 1
-        Debug.Print "✓ 数据类型识别测试通过"
+        Debug.Print "? 数据类型识别测试通过"
     Else
         failCount = failCount + 1
-        Debug.Print "✗ 数据类型识别测试失败"
+        Debug.Print "? 数据类型识别测试失败"
     End If
     
     ' 测试2：列宽计算
     If TestColumnWidthCalculation() Then
         passCount = passCount + 1
-        Debug.Print "✓ 列宽计算测试通过"
+        Debug.Print "? 列宽计算测试通过"
     Else
         failCount = failCount + 1
-        Debug.Print "✗ 列宽计算测试失败"
+        Debug.Print "? 列宽计算测试失败"
     End If
     
     ' 测试3：缓存机制
     If TestCacheMechanism() Then
         passCount = passCount + 1
-        Debug.Print "✓ 缓存机制测试通过"
+        Debug.Print "? 缓存机制测试通过"
     Else
         failCount = failCount + 1
-        Debug.Print "✗ 缓存机制测试失败"
+        Debug.Print "? 缓存机制测试失败"
     End If
     
     ' 测试4：配置管理
     If TestConfigManagement() Then
         passCount = passCount + 1
-        Debug.Print "✓ 配置管理测试通过"
+        Debug.Print "? 配置管理测试通过"
     Else
         failCount = failCount + 1
-        Debug.Print "✗ 配置管理测试失败"
+        Debug.Print "? 配置管理测试失败"
     End If
     
     ' 测试5：标题优先功能（新增）
     If TestHeaderPriorityCalculation() Then
         passCount = passCount + 1
-        Debug.Print "✓ 标题优先计算测试通过"
+        Debug.Print "? 标题优先计算测试通过"
     Else
         failCount = failCount + 1
-        Debug.Print "✗ 标题优先计算测试失败"
+        Debug.Print "? 标题优先计算测试失败"
     End If
     
     ' 测试6：超长文本处理功能（新增）
     If TestExtremeTextProcessing() Then
         passCount = passCount + 1
-        Debug.Print "✓ 超长文本处理测试通过"
+        Debug.Print "? 超长文本处理测试通过"
     Else
         failCount = failCount + 1
-        Debug.Print "✗ 超长文本处理测试失败"
+        Debug.Print "? 超长文本处理测试失败"
     End If
     
     ' 测试7：安全数组读取功能
     If TestSafeReadRangeToArray() Then
         passCount = passCount + 1
-        Debug.Print "✓ 安全数组读取测试通过"
+        Debug.Print "? 安全数组读取测试通过"
     Else
         failCount = failCount + 1
-        Debug.Print "✗ 安全数组读取测试失败"
+        Debug.Print "? 安全数组读取测试失败"
     End If
     
     Debug.Print "=" & String(50, "=")
@@ -1651,8 +2312,8 @@ Private Function TestDataTypeDetection() As Boolean
     On Error GoTo TestFailed
     
     ' 测试各种数据类型
-    Debug.Assert GetEnhancedDataType("Hello") = DataType.ShortText
-    Debug.Assert GetEnhancedDataType("这是一段很长的文本内容用于测试长文本识别功能") = DataType.LongText
+    Debug.Assert GetEnhancedDataType("Hello") = dataType.shortText
+    Debug.Assert GetEnhancedDataType("这是一段很长的文本内容用于测试长文本识别功能") = dataType.longText
     Debug.Assert GetEnhancedDataType(123) = IntegerValue
     Debug.Assert GetEnhancedDataType(123.45) = DecimalValue
     Debug.Assert GetEnhancedDataType("50%") = PercentageValue
@@ -1793,16 +2454,16 @@ Private Function TestHeaderPriorityCalculation() As Boolean
     ' 测试标题优先宽度计算
     Dim analysis As ColumnAnalysisData
     analysis.IsHeaderColumn = True
-    analysis.HeaderText = "客户名称"
+    analysis.headerText = "客户名称"
     analysis.MaxContentWidth = 15
-    analysis.DataType = DataType.ShortText
+    analysis.dataType = dataType.shortText
     
-    Dim result As WidthResult
+    Dim result As widthResult
     result = CalculateOptimalWidthWithHeader(analysis)
     Debug.Assert result.FinalWidth > 0
     
     ' 测试标题宽度大于数据宽度的情况
-    analysis.HeaderText = "非常长的标题文本"
+    analysis.headerText = "非常长的标题文本"
     analysis.MaxContentWidth = 5
     result = CalculateOptimalWidthWithHeader(analysis)
     Debug.Assert result.FinalWidth >= analysis.MaxContentWidth
@@ -1834,9 +2495,9 @@ Private Function TestExtremeTextProcessing() As Boolean
     longText = "这是一个比较长的文本内容，用来测试长文本的处理效果和分类准确性，确保系统能够正确识别不同长度的文本"
     extremeText = "这是一个极长的文本内容，专门设计用来测试系统在处理极端长度文本时的表现，包括但不限于：智能换行处理、行高自动调整、列宽优化计算、文本截断保护、格式保持、可读性优化、性能控制等多个方面的功能，确保系统能够在各种极端情况下都能够稳定运行"
     
-    If ClassifyTextLength(shortText) <> TextLengthCategory.ShortText Then GoTo TestFailed
-    If ClassifyTextLength(longText) <> TextLengthCategory.LongText Then GoTo TestFailed
-    If ClassifyTextLength(extremeText) <> TextLengthCategory.ExtremeText Then GoTo TestFailed
+    If ClassifyTextLength(shortText) <> TextLengthCategory.shortText Then GoTo TestFailed
+    If ClassifyTextLength(longText) <> TextLengthCategory.longText Then GoTo TestFailed
+    If ClassifyTextLength(extremeText) <> TextLengthCategory.extremeText Then GoTo TestFailed
     
     ' 测试2：超长文本宽度计算
     Dim calculatedWidth As Double
@@ -1882,11 +2543,11 @@ Private Function TestSafeReadRangeToArray() As Boolean
     
     ' 保存原始值
     Dim originalA1 As Variant, originalB1 As Variant
-    originalA1 = testWs.Range("A1").Value
-    originalB1 = testWs.Range("B1").Value
+    originalA1 = testWs.Range("A1").value
+    originalB1 = testWs.Range("B1").value
     
     ' 测试单个单元格
-    testWs.Range("A1").Value = "测试值"
+    testWs.Range("A1").value = "测试值"
     Dim singleResult As Variant
     singleResult = SafeReadRangeToArray(testWs.Range("A1"))
     Debug.Assert IsArray(singleResult)
@@ -1894,8 +2555,8 @@ Private Function TestSafeReadRangeToArray() As Boolean
     Debug.Assert singleResult(1, 1) = "测试值"
     
     ' 测试多单元格区域
-    testWs.Range("A1").Value = "标题1"
-    testWs.Range("B1").Value = "标题2"
+    testWs.Range("A1").value = "标题1"
+    testWs.Range("B1").value = "标题2"
     Dim multiResult As Variant
     multiResult = SafeReadRangeToArray(testWs.Range("A1:B1"))
     Debug.Assert IsArray(multiResult)
@@ -1910,8 +2571,8 @@ Private Function TestSafeReadRangeToArray() As Boolean
     Debug.Assert IsArray(emptyResult)
     
     ' 恢复原始值
-    testWs.Range("A1").Value = originalA1
-    testWs.Range("B1").Value = originalB1
+    testWs.Range("A1").value = originalA1
+    testWs.Range("B1").value = originalB1
     
     TestSafeReadRangeToArray = True
     Exit Function
@@ -1919,8 +2580,8 @@ Private Function TestSafeReadRangeToArray() As Boolean
 TestFailed:
     ' 恢复原始值
     On Error Resume Next
-    testWs.Range("A1").Value = originalA1
-    testWs.Range("B1").Value = originalB1
+    testWs.Range("A1").value = originalA1
+    testWs.Range("B1").value = originalB1
     TestSafeReadRangeToArray = False
 End Function
 
@@ -1953,16 +2614,31 @@ Private Sub ApplyColumnWidthOptimization(targetRange As Range, analyses() As Col
     Dim i As Long
     Dim col As Range
     
+    ' 预缓存列对象，减少重复的Columns调用
+    Dim columnCache() As Range
+    ReDim columnCache(1 To UBound(analyses))
+    
+    ' 一次性获取所有列的引用
     For i = 1 To UBound(analyses)
-        Set col = targetRange.Columns(i)
+        Set columnCache(i) = targetRange.Columns(i)
+    Next i
+    
+    ' 应用列宽优化
+    For i = 1 To UBound(analyses)
+        Set col = columnCache(i)
         
         ' 检查列是否隐藏，跳过隐藏列
         If Not col.Hidden Then
             ' 应用列宽（仅当有有效宽度时）
             If analyses(i).OptimalWidth > 0 Then
-                col.ColumnWidth = analyses(i).OptimalWidth
+                col.columnWidth = analyses(i).OptimalWidth
             End If
         End If
+    Next i
+    
+    ' 清理缓存
+    For i = 1 To UBound(columnCache)
+        Set columnCache(i) = Nothing
     Next i
 End Sub
 
@@ -1976,10 +2652,19 @@ Private Sub ApplyAlignmentOptimizationWithHeader(targetRange As Range, analyses(
     Dim i As Long
     Dim col As Range
     
+    ' 预取可见数据范围以减少SpecialCells调用
+    Dim precomputedDataRange As Range
+    Dim precomputedVisibleData As Range
+    
+    If hasHeader And targetRange.Rows.Count > 1 Then
+        Set precomputedDataRange = targetRange.Resize(targetRange.Rows.Count - 1).Offset(1, 0)
+        Set precomputedVisibleData = GetVisibleRange(precomputedDataRange)
+    End If
+    
     For i = 1 To UBound(analyses)
         Set col = targetRange.Columns(i)
         
-        ' 只处理可见列
+        ' 只处理可见列（缓存列引用减少COM调用）
         If Not col.Hidden Then
             ' 如果有表头且是第一行，标题居中
             If hasHeader And targetRange.Rows.Count > 1 Then
@@ -1989,26 +2674,23 @@ Private Sub ApplyAlignmentOptimizationWithHeader(targetRange As Range, analyses(
                     col.Cells(1, 1).VerticalAlignment = xlCenter
                 End If
                 
-                ' 数据行根据类型对齐
-                If targetRange.Rows.Count > 1 Then
-                    Dim dataRange As Range
-                    Set dataRange = col.Resize(targetRange.Rows.Count - 1, 1).Offset(1, 0)
+                ' 数据行根据类型对齐（使用预取的可见范围）
+                If targetRange.Rows.Count > 1 And Not precomputedVisibleData Is Nothing Then
+                    ' 计算当前列在可见数据中的交集
+                    Dim columnVisibleData As Range
+                    Set columnVisibleData = Application.Intersect(precomputedVisibleData, col)
                     
-                    ' 过滤出可见行进行处理
-                    Dim visibleDataRange As Range
-                    Set visibleDataRange = GetVisibleRange(dataRange)
-                    
-                    If Not visibleDataRange Is Nothing Then
-                        Select Case analyses(i).DataType
+                    If Not columnVisibleData Is Nothing Then
+                        Select Case analyses(i).dataType
                             Case IntegerValue, DecimalValue, CurrencyValue, PercentageValue
-                                visibleDataRange.HorizontalAlignment = xlRight
+                                columnVisibleData.HorizontalAlignment = xlRight
                             Case DateValue, TimeValue, DateTimeValue
                                 ' 日期居中对齐，避免左对齐时的空格问题
-                                visibleDataRange.HorizontalAlignment = xlCenter
+                                columnVisibleData.HorizontalAlignment = xlCenter
                             Case Else
-                                visibleDataRange.HorizontalAlignment = xlLeft
+                                columnVisibleData.HorizontalAlignment = xlLeft
                         End Select
-                        visibleDataRange.VerticalAlignment = xlTop
+                        columnVisibleData.VerticalAlignment = xlTop
                     End If
                 End If
             Else
@@ -2017,7 +2699,7 @@ Private Sub ApplyAlignmentOptimizationWithHeader(targetRange As Range, analyses(
                 Set visibleCol = GetVisibleRange(col)
                 
                 If Not visibleCol Is Nothing Then
-                    Select Case analyses(i).DataType
+                    Select Case analyses(i).dataType
                         Case IntegerValue, DecimalValue, CurrencyValue, PercentageValue
                             visibleCol.HorizontalAlignment = xlRight
                         Case DateValue, TimeValue, DateTimeValue
@@ -2048,10 +2730,18 @@ Private Sub ApplyWrapAndRowHeight(targetRange As Range, analyses() As ColumnAnal
     hasHeaderAdjustment = False
     maxHeaderHeight = 15 ' 默认最小行高
     
+    ' 预缓存列对象，减少重复的Columns调用
+    Dim columnCache() As Range
+    ReDim columnCache(1 To UBound(analyses))
+    
+    For i = 1 To UBound(analyses)
+        Set columnCache(i) = targetRange.Columns(i)
+    Next i
+    
     ' 首先处理列的换行设置
     For i = 1 To UBound(analyses)
         ' 跳过隐藏列
-        If targetRange.Columns(i).Hidden Then
+        If columnCache(i).Hidden Then
             GoTo NextColumn
         End If
         
@@ -2059,7 +2749,7 @@ Private Sub ApplyWrapAndRowHeight(targetRange As Range, analyses() As ColumnAnal
         If (analyses(i).NeedWrap Or analyses(i).OptimalWidth >= 80) And Not analyses(i).HasMergedCells Then
             ' 获取可见单元格
             Dim visibleColCells As Range
-            Set visibleColCells = GetVisibleRange(targetRange.Columns(i))
+            Set visibleColCells = GetVisibleRange(columnCache(i))
             
             If Not visibleColCells Is Nothing Then
                 visibleColCells.WrapText = True
@@ -2069,7 +2759,7 @@ Private Sub ApplyWrapAndRowHeight(targetRange As Range, analyses() As ColumnAnal
         ' 处理标题换行（如果存在标题）
         If analyses(i).IsHeaderColumn And analyses(i).HeaderNeedWrap Then
             If Not targetRange.Rows(1).Hidden Then
-                targetRange.Columns(i).Cells(1, 1).WrapText = True
+                columnCache(i).Cells(1, 1).WrapText = True
                 hasHeaderAdjustment = True
                 If analyses(i).HeaderRowHeight > maxHeaderHeight Then
                     maxHeaderHeight = analyses(i).HeaderRowHeight
@@ -2082,13 +2772,13 @@ NextColumn:
     
     ' 如果有标题需要调整，先设置标题行高（仅在标题行可见时）
     If hasHeaderAdjustment And Not targetRange.Rows(1).Hidden Then
-        targetRange.Rows(1).RowHeight = maxHeaderHeight
+        targetRange.Rows(1).rowHeight = maxHeaderHeight
     End If
     
     ' 自动调整所有可见行的行高
     Dim originalFirstRowHeight As Double
     If hasHeaderAdjustment And Not targetRange.Rows(1).Hidden Then
-        originalFirstRowHeight = targetRange.Rows(1).RowHeight
+        originalFirstRowHeight = targetRange.Rows(1).rowHeight
     End If
     
     ' 对所有行进行自动调整（包括长文本行）
@@ -2100,9 +2790,9 @@ NextColumn:
             hasLongText = False
             
             For i = 1 To UBound(analyses)
-                If Not targetRange.Columns(i).Hidden Then
+                If Not columnCache(i).Hidden Then
                     Dim cellValue As String
-                    cellValue = CStr(targetRange.Cells(row, i).Value)
+                    cellValue = CStr(targetRange.Cells(row, i).value)
                     If Len(cellValue) > LONG_TEXT_THRESHOLD Then
                         hasLongText = True
                         Exit For
@@ -2114,12 +2804,12 @@ NextColumn:
             If hasLongText Then
                 targetRange.Rows(row).AutoFit
                 ' 确保行高足够显示内容
-                If targetRange.Rows(row).RowHeight < 30 Then
-                    targetRange.Rows(row).RowHeight = 30
+                If targetRange.Rows(row).rowHeight < 30 Then
+                    targetRange.Rows(row).rowHeight = 30
                 End If
                 ' 限制最大行高
-                If targetRange.Rows(row).RowHeight > 100 Then
-                    targetRange.Rows(row).RowHeight = 100
+                If targetRange.Rows(row).rowHeight > 100 Then
+                    targetRange.Rows(row).rowHeight = 100
                 End If
             Else
                 ' 普通行的自动调整
@@ -2130,10 +2820,15 @@ NextColumn:
     
     ' 恢复标题行高（如果被自动调整影响了）
     If hasHeaderAdjustment And Not targetRange.Rows(1).Hidden Then
-        If targetRange.Rows(1).RowHeight < originalFirstRowHeight Then
-            targetRange.Rows(1).RowHeight = originalFirstRowHeight
+        If targetRange.Rows(1).rowHeight < originalFirstRowHeight Then
+            targetRange.Rows(1).rowHeight = originalFirstRowHeight
         End If
     End If
+    
+    ' 清理缓存
+    For i = 1 To UBound(columnCache)
+        Set columnCache(i) = Nothing
+    Next i
     
     On Error GoTo 0
 End Sub
@@ -2153,21 +2848,44 @@ Private Function CalculateTextWidth(text As String, fontSize As Integer) As Doub
     Dim charStats As CharCount
     charStats = CountCharacterTypes(text)
     
-    ' 改进的字符宽度系数
-    Const CHINESE_WIDTH As Double = 2.0  ' 中文字符占2个单位
-    Const ENGLISH_WIDTH As Double = 1.0  ' 英文字符占1个单位
-    Const NUMBER_WIDTH As Double = 0.9   ' 数字稍窄
-    Const OTHER_WIDTH As Double = 1.0    ' 其他字符
+    ' 改进的字符宽度系数 - 根据字号优化
+    Dim chineseWidth As Double, englishWidth As Double, numberWidth As Double, otherWidth As Double
+    
+    ' 针对常用字号预计算宽度系数（11号为基准）
+    If fontSize = 11 Then
+        ' 基准字号，无需除法运算
+        chineseWidth = 2#
+        englishWidth = 1#
+        numberWidth = 0.9
+        otherWidth = 1#
+    ElseIf fontSize = 12 Then
+        ' 12号字体预计算系数
+        chineseWidth = 2.181818  ' 2 * (12/11)
+        englishWidth = 1.090909  ' 1 * (12/11)
+        numberWidth = 0.981818   ' 0.9 * (12/11)
+        otherWidth = 1.090909    ' 1 * (12/11)
+    ElseIf fontSize = 10 Then
+        ' 10号字体预计算系数
+        chineseWidth = 1.818182  ' 2 * (10/11)
+        englishWidth = 0.909091  ' 1 * (10/11)
+        numberWidth = 0.818182   ' 0.9 * (10/11)
+        otherWidth = 0.909091    ' 1 * (10/11)
+    Else
+        ' 其他字号动态计算
+        Dim fontRatio As Double
+        fontRatio = fontSize / 11#
+        chineseWidth = 2# * fontRatio
+        englishWidth = 1# * fontRatio
+        numberWidth = 0.9 * fontRatio
+        otherWidth = 1# * fontRatio
+    End If
     
     ' 计算加权宽度
     Dim width As Double
-    width = charStats.ChineseCount * CHINESE_WIDTH + _
-            charStats.EnglishCount * ENGLISH_WIDTH + _
-            charStats.NumberCount * NUMBER_WIDTH + _
-            charStats.OtherCount * OTHER_WIDTH
-    
-    ' 字号调整（11号字体为基准）
-    width = width * (fontSize / 11)
+    width = charStats.ChineseCount * chineseWidth + _
+            charStats.EnglishCount * englishWidth + _
+            charStats.NumberCount * numberWidth + _
+            charStats.OtherCount * otherWidth
     
     ' 对于包含逗号分隔的长文本，适当增加宽度
     If InStr(text, "，") > 0 Or InStr(text, ",") > 0 Then
@@ -2178,7 +2896,7 @@ Private Function CalculateTextWidth(text As String, fontSize As Integer) As Doub
     Exit Function
     
 ErrorHandler:
-    CalculateTextWidth = Len(text) * 1.0 ' 默认值
+    CalculateTextWidth = Len(text) * 1#  ' 默认值
 End Function
 
 '--------------------------------------------------
@@ -2258,7 +2976,7 @@ Private Function IsHeaderRow(firstRow As Range, secondRow As Range) As Boolean
     allText = True
     Dim cell As Range
     For Each cell In firstRow.Cells
-        If Not IsEmpty(cell.Value) And IsNumeric(cell.Value) Then
+        If Not IsEmpty(cell.value) And IsNumeric(cell.value) Then
             allText = False
             Exit For
         End If
@@ -2269,7 +2987,7 @@ Private Function IsHeaderRow(firstRow As Range, secondRow As Range) As Boolean
     Dim noEmpty As Boolean
     noEmpty = True
     For Each cell In firstRow.Cells
-        If IsEmpty(cell.Value) Then
+        If IsEmpty(cell.value) Then
             noEmpty = False
             Exit For
         End If
@@ -2295,8 +3013,8 @@ Private Function IsHeaderRow(firstRow As Range, secondRow As Range) As Boolean
         For i = 1 To Application.Min(firstRow.Cells.Count, secondRow.Cells.Count)
             Dim firstType As Boolean
             Dim secondType As Boolean
-            firstType = IsNumeric(firstRow.Cells(i).Value)
-            secondType = IsNumeric(secondRow.Cells(i).Value)
+            firstType = IsNumeric(firstRow.Cells(i).value)
+            secondType = IsNumeric(secondRow.Cells(i).value)
             If firstType <> secondType Then typeDiff = typeDiff + 1
         Next i
         If typeDiff > firstRow.Cells.Count / 2 Then score = score + 2
@@ -2309,8 +3027,8 @@ Private Function IsHeaderRow(firstRow As Range, secondRow As Range) As Boolean
     totalLength = 0
     textCount = 0
     For Each cell In firstRow.Cells
-        If Not IsEmpty(cell.Value) Then
-            totalLength = totalLength + Len(CStr(cell.Value))
+        If Not IsEmpty(cell.value) Then
+            totalLength = totalLength + Len(CStr(cell.value))
             textCount = textCount + 1
         End If
     Next cell
@@ -2357,13 +3075,13 @@ End Function
 '--------------------------------------------------
 ' 标题优先的列宽计算
 '--------------------------------------------------
-Private Function CalculateOptimalWidthWithHeader(analysis As ColumnAnalysisData) As WidthResult
-    Dim result As WidthResult
+Private Function CalculateOptimalWidthWithHeader(analysis As ColumnAnalysisData) As widthResult
+    Dim result As widthResult
     On Error GoTo ErrorHandler
     
     ' 如果不是标题列或没有启用标题优先，使用原有逻辑
     If Not analysis.IsHeaderColumn Or Not g_Config.HeaderPriority Then
-        result = CalculateOptimalWidthEnhanced(analysis.MaxContentWidth, analysis.DataType)
+        result = CalculateOptimalWidthEnhanced(analysis.MaxContentWidth, analysis.dataType)
         CalculateOptimalWidthWithHeader = result
         Exit Function
     End If
@@ -2373,7 +3091,7 @@ Private Function CalculateOptimalWidthWithHeader(analysis As ColumnAnalysisData)
     Dim dataOptimalWidth As Double
     
     ' 计算标题需要的宽度
-    headerRequiredWidth = AnalyzeHeaderWidth(analysis.HeaderText, g_Config.MaxColumnWidth)
+    headerRequiredWidth = AnalyzeHeaderWidth(analysis.headerText, g_Config.MaxColumnWidth)
     
     ' 计算数据内容的最优宽度
     dataOptimalWidth = analysis.MaxContentWidth + g_Config.TextBuffer
@@ -2386,7 +3104,7 @@ Private Function CalculateOptimalWidthWithHeader(analysis As ColumnAnalysisData)
     
     ' 检查是否需要换行
     Dim headerTextWidth As Double
-    headerTextWidth = CalculateTextWidth(analysis.HeaderText, 11)
+    headerTextWidth = CalculateTextWidth(analysis.headerText, 11)
     
     If headerTextWidth + g_Config.TextBuffer > g_Config.MaxColumnWidth Then
         result.NeedWrap = True
@@ -2424,15 +3142,15 @@ Private Function ClassifyTextLength(text As String) As TextLengthCategory
     length = Len(text)
     
     If length <= 20 Then
-        ClassifyTextLength = TextLengthCategory.ShortText
+        ClassifyTextLength = TextLengthCategory.shortText
     ElseIf length <= 50 Then
         ClassifyTextLength = TextLengthCategory.MediumText
     ElseIf length <= 100 Then
-        ClassifyTextLength = TextLengthCategory.LongText
+        ClassifyTextLength = TextLengthCategory.longText
     ElseIf length <= 200 Then
         ClassifyTextLength = TextLengthCategory.VeryLongText
     Else
-        ClassifyTextLength = TextLengthCategory.ExtremeText
+        ClassifyTextLength = TextLengthCategory.extremeText
     End If
 End Function
 
@@ -2525,3 +3243,4 @@ Private Function CalculateOptimalRowHeight(text As String, columnWidth As Double
 ErrorHandler:
     CalculateOptimalRowHeight = MIN_ROW_HEIGHT
 End Function
+
