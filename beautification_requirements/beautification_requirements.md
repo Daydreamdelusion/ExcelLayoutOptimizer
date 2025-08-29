@@ -21,17 +21,17 @@
 - **轻量实现**：无需复杂AI，基于关键词匹配的简单高效方案
 
 #### 1.2.3 智能撤销机制：逻辑撤销保障 🛡️
-- **变更日志记录**：记录所有新增样式名和条件格式规则ID
-- **逐项回滚撤销**：`UndoBeautify()`函数基于日志精确回滚
-- **O(1)级性能**：秒级撤销，不影响数据结构
+- **变更日志记录**：记录所有新增样式名、条件格式规则地址和原始表格样式
+- **精确回滚撤销**：`UndoBeautify()`函数基于详细日志逐项还原，支持多表场景
+- **安全删除策略**：仅删除本次会话创建的样式，避免误删历史样式
+- **O(1)级性能**：秒级撤销，保持数据结构和外部引用完整
 - **用户信心保障**：用户可放心试验各种美化效果
-- **数据安全**：避免操作失误导致的数据损失
 
 ### 1.3 设计目标
 - **快速部署**：单模块VBA实现，导入即用
 - **专业体验**：UserForm界面替代粗糙InputBox
 - **智能识别**：轻量级语义识别，自动处理特殊行
-- **安全可靠**：内置备份撤销机制，保障数据安全
+- **安全可靠**：内置逻辑撤销机制，保障数据安全
 - **兼容性强**：与现有布局优化系统无缝集成
 
 ### 1.4 核心价值
@@ -402,10 +402,11 @@ End Function
 ' 全局变更记录结构
 Type BeautifyLog
     StylesAdded As String          ' 新增样式名列表，分号分隔
-    CFRulesAdded As String         ' 新增CF规则ID列表，分号分隔
-    OriginalTableStyle As String   ' 原始表格样式
+    CFRulesAdded As String         ' 新增CF规则地址列表，分号分隔
+    TableStylesMap As String       ' 表格原始样式映射，格式: "SheetName.TableName:StyleName;"
     OriginalCellStyles As String   ' 原始单元格样式映射
     Timestamp As Date              ' 操作时间
+    SessionId As String            ' 会话ID，用于区分不同美化会话
 End Type
 
 Dim g_BeautifyHistory As BeautifyLog
@@ -414,7 +415,8 @@ Sub InitializeBeautifyLog()
     ' 清空历史记录
     g_BeautifyHistory.StylesAdded = ""
     g_BeautifyHistory.CFRulesAdded = ""
-    g_BeautifyHistory.OriginalTableStyle = ""
+    g_BeautifyHistory.TableStylesMap = ""
+    g_BeautifyHistory.SessionId = Format(Now, "yyyymmddhhmmss") & "_" & Int(Rnd * 1000)
     g_BeautifyHistory.Timestamp = Now
 End Sub
 
@@ -433,6 +435,16 @@ Sub LogCFRule(ruleAddress As String)
         g_BeautifyHistory.CFRulesAdded = g_BeautifyHistory.CFRulesAdded & ";" & ruleAddress
     End If
 End Sub
+
+Sub LogTableStyle(sheetName As String, tableName As String, originalStyle As String)
+    Dim mapping As String
+    mapping = sheetName & "." & tableName & ":" & originalStyle
+    If g_BeautifyHistory.TableStylesMap = "" Then
+        g_BeautifyHistory.TableStylesMap = mapping
+    Else
+        g_BeautifyHistory.TableStylesMap = g_BeautifyHistory.TableStylesMap & ";" & mapping
+    End If
+End Sub
 ```
 
 **逻辑撤销机制**：
@@ -440,7 +452,8 @@ End Sub
 Sub UndoBeautify()
     Dim ws As Worksheet
     Dim styleNames() As String
-    Dim cfRules() As String
+    Dim cfRuleAddresses() As String
+    Dim tableStyleMappings() As String
     Dim i As Long, j As Long
     
     Set ws = ActiveSheet
@@ -452,34 +465,53 @@ Sub UndoBeautify()
     
     Application.ScreenUpdating = False
     
-    ' 1. 移除新增的自定义样式
-    If g_BeautifyHistory.StylesAdded <> "" Then
-        styleNames = Split(g_BeautifyHistory.StylesAdded, ";")
-        For i = 0 To UBound(styleNames)
+    ' 1. 删除记录的条件格式规则（按地址精确删除）
+    If g_BeautifyHistory.CFRulesAdded <> "" Then
+        cfRuleAddresses = Split(g_BeautifyHistory.CFRulesAdded, ";")
+        For i = 0 To UBound(cfRuleAddresses)
             On Error Resume Next
-            ThisWorkbook.Styles(styleNames(i)).Delete
+            ' 使用地址精确删除，而非依赖Formula1判断
+            Range(cfRuleAddresses(i)).FormatConditions.Delete
             On Error GoTo 0
         Next i
     End If
     
-    ' 2. 删除带ELO前缀的条件格式规则
-    For i = ws.Cells.FormatConditions.Count To 1 Step -1
-        If InStr(ws.Cells.FormatConditions(i).Formula1, "ELO_") > 0 Or _
-           Left(ws.Cells.FormatConditions(i).Formula1, 4) = "ELO_" Then
-            ws.Cells.FormatConditions(i).Delete
-        End If
-    Next i
-    
-    ' 3. 还原原始表格样式
-    If g_BeautifyHistory.OriginalTableStyle <> "" Then
-        For Each tbl In ws.ListObjects
-            tbl.TableStyle = g_BeautifyHistory.OriginalTableStyle
-        Next tbl
+    ' 2. 还原表格原始样式（支持多表场景）
+    If g_BeautifyHistory.TableStylesMap <> "" Then
+        tableStyleMappings = Split(g_BeautifyHistory.TableStylesMap, ";")
+        For i = 0 To UBound(tableStyleMappings)
+            Dim parts() As String
+            parts = Split(tableStyleMappings(i), ":")
+            If UBound(parts) = 1 Then
+                Dim tableInfo() As String
+                tableInfo = Split(parts(0), ".")
+                If UBound(tableInfo) = 1 Then
+                    Dim targetSheet As Worksheet
+                    Set targetSheet = ThisWorkbook.Worksheets(tableInfo(0))
+                    Dim targetTable As ListObject
+                    Set targetTable = targetSheet.ListObjects(tableInfo(1))
+                    targetTable.TableStyle = parts(1)
+                End If
+            End If
+        Next i
     End If
     
-    ' 4. 移除自定义表格样式
+    ' 3. 移除本次会话创建的自定义样式（仅限本会话）
+    If g_BeautifyHistory.StylesAdded <> "" Then
+        styleNames = Split(g_BeautifyHistory.StylesAdded, ";")
+        For i = 0 To UBound(styleNames)
+            On Error Resume Next
+            ' 确保只删除本次会话创建的样式
+            If InStr(styleNames(i), g_BeautifyHistory.SessionId) > 0 Then
+                ThisWorkbook.Styles(styleNames(i)).Delete
+            End If
+            On Error GoTo 0
+        Next i
+    End If
+    
+    ' 4. 移除本次会话创建的自定义表格样式（安全删除）
     For i = ActiveWorkbook.TableStyles.Count To 1 Step -1
-        If Left(ActiveWorkbook.TableStyles(i).Name, 4) = "ELO_" Then
+        If InStr(ActiveWorkbook.TableStyles(i).Name, "ELO_" & g_BeautifyHistory.SessionId) > 0 Then
             ActiveWorkbook.TableStyles(i).Delete
         End If
     Next i
@@ -489,45 +521,30 @@ Sub UndoBeautify()
     ' 清空历史记录
     InitializeBeautifyLog
     
-    MsgBox "撤销完成！已移除所有美化样式，保留原始数据结构。", vbInformation
+    MsgBox "撤销完成！已移除本次美化样式，保留原始数据结构。", vbInformation
 End Sub
 ```
 
-**手动应急备份**（可选）：
+**智能错误处理**：
 ```vba
-Sub CreateManualBackup()
-    ' 仅作为手动应急工具，不在自动流程中使用
-    ' 用户可选择性调用，用于重要数据的额外保险
-    Dim userChoice As VbMsgBoxResult
-    userChoice = MsgBox("是否创建手动备份工作表？" & vbCrLf & _
-                       "注意：这会复制整个工作表，仅建议重要数据使用", _
-                       vbYesNo + vbQuestion, "手动备份确认")
-    
-    If userChoice = vbYes Then
-        ActiveSheet.Copy After:=ActiveSheet
-        ActiveSheet.Name = ActiveSheet.Previous.Name & "_ManualBackup_" & Format(Now, "hhmmss")
-        ActiveSheet.Visible = xlSheetHidden
-        MsgBox "手动备份已创建：" & ActiveSheet.Name, vbInformation
+Sub ValidateBeautifyOperation(targetRange As Range) As Boolean
+    ' 预检查，确保操作安全性
+    If targetRange Is Nothing Then
+        MsgBox "请选择有效的数据区域", vbExclamation
+        ValidateBeautifyOperation = False
+        Exit Sub
     End If
-End Sub
-```
-
-**说明**：手动备份仅作为用户可选的额外保险，不在自动美化流程中使用，避免对命名区域/外链/透视缓存的破坏。
-            ws.Delete
-            backupCount = backupCount + 1
-        End If
-    Next ws
-    Application.DisplayAlerts = True
     
-    MsgBox "已清理 " & backupCount & " 个备份文件", vbInformation
+    If targetRange.Cells.Count > 100000 Then
+        If MsgBox("数据量较大，美化可能需要较长时间，是否继续？", vbYesNo) = vbNo Then
+            ValidateBeautifyOperation = False
+            Exit Sub
+        End If
+    End If
+    
+    ValidateBeautifyOperation = True
 End Sub
 ```
-
-**安全保障价值**：
-- **操作信心**：用户可大胆试验，知道随时能恢复
-- **数据安全**：避免误操作导致的数据丢失
-- **完整恢复**：工作表级别的完整备份恢复
-- **智能清理**：提供备份清理功能，避免文件臃肿
 
 ### 2.7 简化美化功能
 
@@ -783,7 +800,6 @@ End Sub
 Public Sub BeautifyTable()                   ' UserForm界面美化入口
 Public Sub ShowBeautifyForm()               ' 显示专业UserForm界面
 Public Sub UndoBeautify()                   ' 一键撤销美化效果
-Public Sub CleanupBackups()                 ' 清理备份工作表
 
 ' ===== UserForm界面处理 =====
 Private Sub BeautifyForm_Initialize()       ' 初始化UserForm界面
@@ -801,7 +817,7 @@ Private Function AnalyzeTableContent(tableRange As Range) As ContentAnalysis
 Private Sub InitializeBeautifyLog()         ' 初始化变更日志
 Private Sub LogStyleChange(styleName As String)  ' 记录样式变更
 Private Sub LogCFRule(ruleAddress As String)     ' 记录CF规则
-Private Function CreateManualBackup() As String  ' 手动应急备份（可选）
+Private Sub LogTableStyle(sheetName As String, tableName As String, originalStyle As String)  ' 记录表格样式
 
 ' ===== 传统美化功能（保持兼容） =====
 ' 表头美化
@@ -1068,7 +1084,7 @@ Private Sub ShowUndoConfirmation()
                    "撤销美化效果")
     
     If result = vbYes Then
-        Call RestoreFromBackup()
+        Call UndoBeautify()
     End If
 End Sub
 ```
@@ -1081,14 +1097,14 @@ Private Sub ShowOperationResult(success As Boolean, operationType As String)
             Case "Beautify"
                 MsgBox "✅ 表格美化完成！" & vbCrLf & vbCrLf & _
                        "• 已应用专业美化样式" & vbCrLf & _
-                       "• 已自动创建备份，可随时撤销" & vbCrLf & _
+                       "• 记录变更日志，可随时撤销" & vbCrLf & _
                        "• 如需撤销，请运行 UndoBeautify()", _
                        vbInformation, "美化成功"
                        
             Case "Undo"
                 MsgBox "✅ 美化效果已撤销！" & vbCrLf & vbCrLf & _
                        "• 数据已完全恢复到美化前状态" & vbCrLf & _
-                       "• 备份文件已清理", _
+                       "• 变更日志已清理", _
                        vbInformation, "撤销成功"
         End Select
     Else
@@ -1155,9 +1171,9 @@ End Sub
 ### 4.3 安全撤销流程
 ```vba
 Sub SafeUndoProcess()
-    ' 1. 检查备份存在性
-    If Not WorksheetExists(ActiveSheet.Name & "_BeautifyBackup") Then
-        MsgBox "未找到备份文件，无法撤销！", vbExclamation
+    ' 1. 检查变更日志
+    If g_BeautifyHistory.SessionId = "" Then
+        MsgBox "未找到美化记录，无法撤销！", vbExclamation
         Exit Sub
     End If
     
@@ -1165,7 +1181,7 @@ Sub SafeUndoProcess()
     Call ShowUndoConfirmation()
     
     ' 3. 执行撤销
-    Call RestoreFromBackup()
+    Call UndoBeautify()
     
     ' 4. 完成反馈
     Call ShowOperationResult(True, "Undo")
@@ -1694,7 +1710,7 @@ Private Function GetSmartDefaults(tableRange As Range) As BeautificationConfig
     ' 根据数据密度决定条纹
     config.ZebraStripes = (tableRange.Rows.Count > 20)
     
-    Set GenerateSmartConfig = config
+    Set GetSmartDefaults = config
 End Function
 ```
 
