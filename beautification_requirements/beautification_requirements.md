@@ -229,278 +229,41 @@ End Function
 - 最大限制：12pt
 - 最小限制：8pt
 
-### 2.6 智能设计系统 (Design Intelligence)
+### 2.6 简化美化功能
 
-#### 2.6.1 核心色彩智能生成 (Color Palette Generator) 🚀
-**功能描述**：超越静态模板，提供动态、智能的设计能力
+#### 2.6.1 预设美化主题
+**功能描述**：提供几套实用的预设美化主题
 
-**智能配色算法**：
-- **单色输入，全套生成**：
-  - 用户只需提供一个品牌主色（HEX/RGB/取色器）
-  - 系统基于色彩理论自动生成完整配色方案
-  - 支持三色系、互补色、邻近色、单色渐变等多种配色策略
+**预设主题配置**：
 
-- **色彩理论应用**：
-  ```vba
-  Function GenerateColorPalette(baseColor As Long, strategy As String) As ColorPalette
-      Select Case strategy
-          Case "Triadic"          ' 三色系（120°间隔）
-              Return Generate120DegreeColors(baseColor)
-          Case "Complementary"    ' 互补色（180°对比）
-              Return GenerateComplementaryColors(baseColor)
-          Case "Analogous"        ' 邻近色（30°相邻）
-              Return GenerateAnalogousColors(baseColor)
-          Case "Monochromatic"    ' 单色渐变
-              Return GenerateMonochromaticColors(baseColor)
-      End Select
-  End Function
-  ```
+1. **商务经典**
+   - 主色调：蓝色系 (#1E3A8A, #3B82F6)
+   - 字体：Calibri / 微软雅黑
+   - 边框：细线简约
+   - 特点：专业、清晰、易读
 
-- **智能配色输出**：
-  - 主色 (Primary)：用户选择的品牌色
-  - 辅色 (Secondary)：基于色彩理论的协调色
-  - 强调色 (Accent)：用于重要数据突出
-  - 警告色 (Warning)：自动计算的对比色
-  - 成功色 (Success)：绿色系变体
-  - 中性灰 (Neutral)：基于主色明度的灰色系
+2. **财务专用**
+   - 主色调：绿色系 (#065F46, #10B981)
+   - 警告色：红色 (#DC2626)
+   - 字体：Times New Roman / 宋体
+   - 边框：双线表头
+   - 特点：数字清晰、正负分明
 
-#### 2.6.2 字体层次感自动构建 (Typography Hierarchy) 🚀
-**功能描述**：基于排版理论自动建立清晰的视觉层次
+3. **极简风格**
+   - 主色调：黑白灰
+   - 强调色：单一强调色
+   - 字体：微软雅黑 / Arial
+   - 边框：无边框或极细边框
+   - 特点：简洁、专注内容
 
-**智能字体层次系统**：
-```vba
-Type TypographyHierarchy
-    ' 用户只选择基础字体，系统自动构建层次
-    BaseFont As String
-    
-    ' 自动生成的层次结构
-    H1_MainTitle As FontConfig      ' 主标题：最重字重，最大字号
-    H2_SubTitle As FontConfig       ' 副标题/表头：次重字重，中等字号
-    Body_Data As FontConfig         ' 正文数据：标准字重字号
-    Caption_Note As FontConfig      ' 注释/辅助：Light字重，小字号
-    
-    ' 智能规则
-    ScaleRatio As Single           ' 字号缩放比例 (1.25 黄金比例)
-    WeightProgression As String    ' 字重递进: Bold→SemiBold→Regular→Light
-End Type
-```
+#### 2.6.2 基础条件格式
+**功能描述**：应用基础条件格式规则
 
-**自动层次规则**：
-- **字重递进**：Bold (700) → SemiBold (600) → Regular (400) → Light (300)
-- **字号缩放**：基于1.25黄金比例自动计算各级字号
-- **行高优化**：不同层次自动调整行高，确保最佳可读性
-- **字符间距**：标题适当增加间距，数据保持紧凑
-
-#### 2.6.3 设计风格智能应用 🚀
-**功能描述**：基于设计理论的一键风格应用
-
-**设计风格定义**：
-```vba
-Type DesignStyle
-    StyleName As String
-    Philosophy As String           ' 设计理念
-    
-    ' 色彩策略
-    ColorStrategy As String        ' 配色策略
-    ColorTemperature As String     ' 色温倾向
-    
-    ' 排版规范
-    TypographyScale As Single      ' 字号缩放比例
-    LineSpacing As Single          ' 行间距倍数
-    
-    ' 空间规范
-    ElementSpacing As Integer      ' 元素间距
-    BorderWeight As String         ' 边框粗细对比
-    
-    ' 数据可视化
-    DataBarStyle As String         ' 数据条样式
-    ConditionalRules As Collection ' 专用条件格式
-End Type
-```
-
-**预设设计风格**：
-
-1. **现代简约 (Modern Minimal)**
-   - 设计理念：Less is More，突出内容本质
-   - 配色策略：单色+高对比度强调
-   - 排版：大字号标题，充足留白
-   - 边框：极细边框或无边框
-   - 数据可视化：简洁数据条，色彩克制
-
-2. **数据仪表盘 (Data Dashboard)**
-   - 设计理念：信息密度最大化，快速洞察
-   - 配色策略：多色系，每类数据独立配色
-   - 排版：紧凑布局，层次分明
-   - 边框：功能性分割线
-   - 数据可视化：丰富的图表元素，强烈视觉对比
-
-3. **财务严谨 (Financial Strict)**
-   - 设计理念：准确、可信、专业
-   - 配色策略：保守色系，强调正负对比
-   - 排版：传统衬线字体，标准间距
-   - 边框：规整的网格线
-   - 数据可视化：精确的数值显示，清晰的分类
-
-4. **学术报告 (Academic Report)**
-   - 设计理念：严谨、清晰、可读性优先
-   - 配色策略：黑白灰为主，蓝色强调
-   - 排版：标准学术格式
-   - 边框：正式的表格线条
-   - 数据可视化：注重数据完整性展示
-
-### 2.7 上下文感知格式化 (Context-Aware Formatting)
-
-#### 2.7.1 表格语义分析引擎 🚀
-**功能描述**：让系统"读懂"表格内容和结构
-
-**智能语义识别**：
-```vba
-Function AnalyzeTableSemantics(tableRange As Range) As TableSemantics
-    Dim semantics As TableSemantics
-    
-    ' 结构分析
-    semantics.HeaderRows = DetectHeaderStructure(tableRange)
-    semantics.DataTypes = AnalyzeColumnDataTypes(tableRange)
-    semantics.GroupingColumns = DetectGroupingColumns(tableRange)
-    
-    ' 语义分析
-    semantics.SummaryRows = DetectSummaryRows(tableRange)
-    semantics.CalculatedColumns = DetectCalculatedColumns(tableRange)
-    semantics.TimeSeriesColumns = DetectTimeColumns(tableRange)
-    semantics.KPIColumns = DetectKPIColumns(tableRange)
-    
-    ' 业务逻辑分析
-    semantics.BudgetActualPairs = DetectBudgetActualPairs(tableRange)
-    semantics.TargetAchievementPairs = DetectTargetPairs(tableRange)
-    semantics.TrendColumns = DetectTrendData(tableRange)
-    
-    Return semantics
-End Function
-```
-
-#### 2.7.2 汇总行/列智能识别与增强 🚀
-**功能描述**：自动识别并特殊美化汇总数据
-
-**智能识别算法**：
-- **关键词检测**：
-  ```vba
-  SummaryKeywords = Array("合计", "总计", "小计", "平均", "汇总", "Total", "Sum", "Average", "Subtotal")
-  ```
-- **位置分析**：最后一行/列的特殊处理
-- **数值特征**：通常是其他行列的计算结果
-
-**自动增强效果**：
-- **视觉分割**：顶部双线边框，与明细数据清晰分离
-- **样式强化**：整体加粗，字号放大10%
-- **背景区分**：淡灰色背景填充 (#F8F9FA)
-- **数值强调**：使用品牌强调色突出关键汇总数字
-
-#### 2.7.3 数据叙事元素 (Data Storytelling Elements) 🚀
-**功能描述**：帮助数据"自己讲故事"
-
-**差异化分析可视化**：
-```vba
-Function CreateVarianceAnalysis(budgetCol As Range, actualCol As Range) As VarianceResult
-    ' 自动创建差异分析列
-    Dim varianceCol As Range
-    Set varianceCol = actualCol.Offset(0, 1)
-    
-    ' 计算差异率
-    For Each cell In actualCol
-        varianceCol.Cells(cell.Row - actualCol.Row + 1).Formula = _
-            "=(" & cell.Address & "-" & budgetCol.Cells(cell.Row - actualCol.Row + 1).Address & ")/" & _
-            budgetCol.Cells(cell.Row - actualCol.Row + 1).Address
-    Next
-    
-    ' 应用视觉化
-    ApplyVarianceVisualization varianceCol
-End Function
-```
-
-**目标达成率可视化**：
-- **进度条**：在单元格内嵌入迷你进度条
-- **达成状态图标**：✓ (达成) / ⚠ (接近) / ✗ (未达成)
-- **颜色编码**：绿色(>100%) / 黄色(80-100%) / 红色(<80%)
-
-**时间序列智能格式化**：
-- **季度分组**：自动按季度添加分隔线
-- **当前期间高亮**：突出显示当前月份/季度
-- **趋势指示器**：添加箭头图标显示数据走向
-
-### 2.8 流畅工作流 (Streamlined Workflow)
-
-#### 2.8.1 引导式美化向导 (Beautification Wizard) 🚀
-**功能描述**：智能引导用户完成专业级美化
-
-**向导流程设计**：
-```vba
-Sub LaunchBeautificationWizard()
-    Dim wizard As New BeautificationWizard
-    
-    ' 第1步：智能结构分析
-    wizard.Step1_StructureAnalysis
-    ' "我检测到您的表头是第1-2行，数据区域是A3:F500，发现了3个汇总行，是否正确？"
-    
-    ' 第2步：设计风格定义
-    wizard.Step2_StyleDefinition
-    ' "请选择设计风格或提供品牌主色，我将为您生成完整的设计方案"
-    
-    ' 第3步：数据洞察应用
-    wizard.Step3_DataInsights
-    ' "我发现了'预算vs实际'数据对，是否创建差异分析？发现时间序列，是否按季度分组？"
-    
-    ' 第4步：预览与确认
-    wizard.Step4_PreviewConfirm
-    ' 显示实时预览，提供微调选项
-    
-    ' 第5步：应用与报告
-    wizard.Step5_ApplyAndReport
-End Sub
-```
-
-**智能推荐系统**：
-- **基于内容推荐**：财务数据→财务严谨风格
-- **基于规模推荐**：大数据量→简约风格
-- **基于用户历史**：记住用户偏好，智能预选
-
-#### 2.8.2 美化报告与专业度检查 🚀
-**功能描述**：提供美化总结和专业建议
-
-**美化报告内容**：
-```vba
-Type BeautificationReport
-    ' 操作摘要
-    ActionsPerformed As Collection
-    TimeElapsed As Long
-    
-    ' 质量检查
-    AccessibilityScore As Integer    ' 可访问性评分
-    ReadabilityScore As Integer      ' 可读性评分
-    ConsistencyScore As Integer      ' 一致性评分
-    
-    ' 专业建议
-    Recommendations As Collection
-    OptimizationSuggestions As Collection
-    
-    ' 打印预览
-    PrintOptimized As Boolean
-    PageBreakOptimized As Boolean
-End Type
-```
-
-**专业度检查清单**：
-- ✅ **色彩对比度**：确保文字与背景对比度>4.5:1
-- ✅ **数值对齐**：所有数字已右对齐
-- ✅ **层次清晰**：标题、表头、数据层次分明
-- ⚠️ **建议**：表格超过一页，建议启用"顶端标题行"
-- ⚠️ **建议**：F列数据差异较大，可考虑数据条可视化
-- ✅ **一致性**：字体、颜色、间距保持统一
-
-**智能优化建议**：
-- **性能建议**：大表格优化建议
-- **打印建议**：分页和缩放优化
-- **可访问性建议**：色盲友好配色提醒
-- **业务建议**：基于数据特征的展示建议
+**内置规则**：
+- **负数突出**：红色字体显示负数
+- **重复值标记**：浅黄背景标记重复值
+- **空值提醒**：浅灰背景标记空值
+- **数值范围**：基于百分位的简单颜色标记
 ### 2.9 条件格式增强
 **功能描述**：智能应用条件格式规则
 
@@ -598,83 +361,79 @@ End Type
 
 ## 3. 技术实现规范
 
-### 3.1 VBA实现架构
+### 3.1 单模块VBA架构
 
-#### 3.1.1 智能模块结构设计
+#### 3.1.1 简化模块结构设计
 ```vba
-' ===== 核心智能引擎 =====
-Public Sub IntelligentBeautify(Optional config As IntelligentConfig)
-Public Sub LaunchBeautificationWizard()
-Public Sub ApplyDesignStyle(styleName As String, baseColor As Long)
-Public Sub GenerateDesignReport()
+' ===== 主要功能入口 =====
+Public Sub BeautifyTable()                    ' 主功能入口，一键美化
+Public Sub ApplyPresetTheme(themeName As String)    ' 应用预设主题
+Public Sub QuickFormat()                      ' 快速格式化
 
-' ===== 智能设计系统 =====
-' 色彩智能生成
-Private Function GenerateColorPalette(baseColor As Long, strategy As String) As ColorPalette
-Private Function ApplyColorTheory(baseColor As Long, theoryType As String) As Collection
-Private Function ValidateColorAccessibility(palette As ColorPalette) As Boolean
-
-' 字体层次构建
-Private Function BuildTypographyHierarchy(baseFont As String) As TypographyHierarchy
-Private Sub ApplyFontHierarchy(range As Range, hierarchy As TypographyHierarchy)
-Private Function CalculateOptimalFontSizes(baseSize As Integer) As Collection
-
-' 设计风格应用
-Private Sub ApplyDesignStyle(range As Range, style As DesignStyle)
-Private Function LoadDesignStyle(styleName As String) As DesignStyle
-Private Function CustomizeDesignStyle(baseStyle As DesignStyle, userPrefs As Dictionary) As DesignStyle
-
-' ===== 上下文感知系统 =====
-' 语义分析引擎
-Private Function AnalyzeTableSemantics(tableRange As Range) As TableSemantics
-Private Function DetectSummaryRows(range As Range) As Collection
-Private Function DetectBudgetActualPairs(range As Range) As Collection
-Private Function DetectTimeSeriesColumns(range As Range) As Collection
-Private Function DetectKPIColumns(range As Range) As Collection
-
-' 数据叙事元素
-Private Sub CreateVarianceAnalysis(budgetCol As Range, actualCol As Range)
-Private Sub ApplyTargetAchievementVisualization(targetCol As Range, actualCol As Range)
-Private Sub EnhanceTimeSeriesFormatting(timeColumns As Collection)
-Private Sub HighlightDataStory(insights As DataInsights)
-
-' ===== 流畅工作流系统 =====
-' 向导引擎
-Private Sub ShowStructureAnalysisStep(analysis As StructureAnalysis)
-Private Sub ShowStyleDefinitionStep(recommendations As StyleRecommendations)
-Private Sub ShowDataInsightsStep(insights As DataInsights)
-Private Sub ShowPreviewConfirmStep(preview As BeautificationPreview)
-Private Sub ShowReportStep(report As BeautificationReport)
-
-' 报告生成
-Private Function GenerateBeautificationReport() As BeautificationReport
-Private Function PerformQualityCheck(range As Range) As QualityReport
-Private Function GenerateRecommendations(analysis As TableAnalysis) As Collection
-Private Sub ShowProfessionalChecklist(report As BeautificationReport)
-
-' ===== 传统功能模块（保持兼容） =====
-' 表头处理
+' ===== 核心美化功能 =====
+' 表头美化
 Private Sub ApplyHeaderBeautification(headerRange As Range)
-Private Sub DetectHeaderRows() As Integer
-Private Sub ApplyGradientFill(range As Range, gradient As GradientConfig)
+Private Function DetectHeaderRows() As Integer
+Private Sub ApplyGradientFill(range As Range, startColor As Long, endColor As Long)
 
-' 边框处理
-Private Sub SetSmartBorders(tableRange As Range)
-Private Sub ApplyBorderStyle(range As Range, style As BorderStyle)
+' 边框设置
+Private Sub SetTableBorders(tableRange As Range)
+Private Sub ApplyBorderStyle(range As Range, borderWeight As XlBorderWeight)
 
-' 数据处理
-Private Sub HighlightNegativeNumbers(dataRange As Range)
-Private Sub ApplyConditionalFormatting(range As Range, rules As Collection)
-Private Sub ApplyDataBars(range As Range)
+' 条件格式
+Private Sub ApplyBasicConditionalFormat(dataRange As Range)
+Private Sub HighlightNegativeNumbers(range As Range)
+Private Sub MarkDuplicateValues(range As Range)
+Private Sub HighlightEmptyCells(range As Range)
 
-' 行列处理
-Private Sub ApplyZebraStripes(dataRange As Range, config As StripeConfig)
-Private Sub AutoFitColumns(tableRange As Range)
-Private Sub OptimizeColumnWidths(tableRange As Range)
-
-' 字体处理
+' 字体和颜色
 Private Sub StandardizeFonts(tableRange As Range)
-Private Sub ApplyFontTheme(range As Range, theme As FontTheme)
+Private Sub ApplyThemeColors(range As Range, themeConfig As ThemeConfig)
+
+' ===== 辅助工具函数 =====
+' 表格检测
+Private Function DetectTableRange() As Range
+Private Function IsHeaderRow(rowIndex As Integer) As Boolean
+Private Function GetDataRange() As Range
+
+' 主题配置
+Private Function GetBusinessTheme() As ThemeConfig
+Private Function GetFinancialTheme() As ThemeConfig
+Private Function GetMinimalTheme() As ThemeConfig
+
+' 颜色处理
+Private Function RGBToLong(r As Integer, g As Integer, b As Integer) As Long
+Private Function GetThemeColor(colorName As String, themeType As String) As Long
+
+' 性能优化
+Private Sub DisableUpdates()
+Private Sub EnableUpdates()
+Private Sub OptimizeColumnWidths(tableRange As Range)
+```
+
+#### 3.1.2 简化配置数据结构
+```vba
+' 主题配置结构
+Type ThemeConfig
+    ThemeName As String
+    PrimaryColor As Long
+    SecondaryColor As Long
+    AccentColor As Long
+    FontName As String
+    HeaderBold As Boolean
+    BorderStyle As XlLineStyle
+End Type
+
+' 表格信息结构
+Type TableInfo
+    HeaderRange As Range
+    DataRange As Range
+    TotalRange As Range
+    HasHeaders As Boolean
+    RowCount As Long
+    ColumnCount As Long
+End Type
+```
 
 ' 冻结处理
 Private Sub FreezeHeaderRow(headerRows As Integer)
@@ -707,262 +466,101 @@ Private Function ValidateIntelligentResult(result As BeautificationResult) As Bo
 Private Sub LogIntelligentOperation(operation As IntelligentOperation)
 ```
 
-#### 3.1.2 智能配置数据结构
-```vba
-' ===== 智能配置结构 =====
-Private Type IntelligentConfig
-    ' 智能引擎设置
-    IntelligenceLevel As String     ' Basic, Advanced, Expert
-    EnableSemanticAnalysis As Boolean
-    EnableContextAwareness As Boolean
-    EnablePersonalization As Boolean
-    
-    ' 设计智能
-    DesignIntelligence As DesignIntelligenceConfig
-    
-    ' 上下文感知
-    ContextAwareness As ContextAwarenessConfig
-    
-    ' 工作流设置
-    WorkflowSettings As WorkflowConfig
-    
-    ' 传统配置（向后兼容）
-    LegacyConfig As BeautificationConfig
-End Type
-
-' ===== 设计智能配置 =====
-Private Type DesignIntelligenceConfig
-    ' 色彩智能
-    AutoColorGeneration As Boolean
-    ColorStrategy As String         ' Triadic, Complementary, Analogous, Monochromatic
-    BrandColor As Long             ' 用户品牌主色
-    ColorAccessibilityCheck As Boolean
-    
-    ' 字体层次
-    AutoTypographyHierarchy As Boolean
-    BaseFont As String
-    ScaleRatio As Single           ' 字号缩放比例
-    EnableSmartLineHeight As Boolean
-    
-    ' 设计风格
-    SelectedDesignStyle As String  ' Modern, Dashboard, Financial, Academic
-    CustomStyleEnabled As Boolean
-    StylePersonalization As Boolean
-End Type
-
-' ===== 上下文感知配置 =====
-Private Type ContextAwarenessConfig
-    ' 语义分析
-    EnableSemanticAnalysis As Boolean
-    AutoDetectSummaryRows As Boolean
-    AutoDetectKPIColumns As Boolean
-    AutoDetectTimeSeries As Boolean
-    
-    ' 数据叙事
-    EnableDataStorytelling As Boolean
-    AutoCreateVarianceAnalysis As Boolean
-    AutoTargetVisualization As Boolean
-    EnableTrendIndicators As Boolean
-    
-    ' 智能建议
-    EnableSmartRecommendations As Boolean
-    ShowDataInsights As Boolean
-    AutoOptimizeForContext As Boolean
-End Type
-
-' ===== 工作流配置 =====
-Private Type WorkflowConfig
-    ' 向导设置
-    EnableWizardMode As Boolean
-    WizardComplexityLevel As String    ' Simple, Standard, Advanced
-    ShowStepProgress As Boolean
-    
-    ' 报告设置
-    GenerateBeautificationReport As Boolean
-    ShowQualityChecklist As Boolean
-    EnableRecommendations As Boolean
-    ShowPerformanceMetrics As Boolean
-    
-    ' 用户体验
-    ShowTooltips As Boolean
-    EnablePreviewMode As Boolean
-    AutoSaveProgress As Boolean
-End Type
-
-' ===== 色彩调色板结构 =====
-Private Type ColorPalette
-    PrimaryColor As Long           ' 主色
-    SecondaryColor As Long         ' 辅色
-    AccentColor As Long           ' 强调色
-    SuccessColor As Long          ' 成功色
-    WarningColor As Long          ' 警告色
-    ErrorColor As Long            ' 错误色
-    InfoColor As Long             ' 信息色
-    NeutralColors(5) As Long      ' 中性灰色系
-    
-    ' 色彩理论信息
-    ColorTheory As String         ' 使用的色彩理论
-    HarmonyScore As Single        ' 和谐度评分 0-1
-    AccessibilityScore As Single  ' 可访问性评分 0-1
-End Type
-
-' ===== 字体层次结构 =====
-Private Type TypographyHierarchy
-    BaseFont As String
-    
-    ' 层次级别
-    H1_MainTitle As FontLevel     ' 主标题
-    H2_SubTitle As FontLevel      ' 副标题
-    H3_SectionHeader As FontLevel ' 节标题
-    Body_Data As FontLevel        ' 正文数据
-    Caption_Note As FontLevel     ' 注释说明
-    
-    ' 全局设置
-    ScaleRatio As Single          ' 字号缩放比例
-    LineHeightRatio As Single     ' 行高比例
-    LetterSpacing As Single       ' 字符间距
-End Type
-
-Private Type FontLevel
-    FontName As String
-    FontSize As Integer
-    FontWeight As Integer         ' 100-900
-    LineHeight As Single
-    LetterSpacing As Single
-    Color As Long
-End Type
-
-' ===== 设计风格结构 =====
-Private Type DesignStyle
-    ' 基础信息
-    StyleID As String
-    StyleName As String
-    Category As String            ' Modern, Classic, Data, Academic
-    Description As String
-    Philosophy As String          ' 设计理念
-    
-    ' 视觉规范
-    ColorPalette As ColorPalette
-    Typography As TypographyHierarchy
-    Spacing As SpacingRules
-    BorderRules As BorderRules
-    
-    ' 数据可视化规范
-    DataVisualization As DataVisualizationRules
-    
-    ' 应用规则
-    ApplicationRules As StyleApplicationRules
-End Type
-
-' ===== 表格语义分析结果 =====
-Private Type TableSemantics
-    ' 结构信息
-    TableRange As Range
-    HeaderRows As Integer
-    DataRows As Integer
-    TotalColumns As Integer
-    
-    ' 列类型分析
-    ColumnTypes As Collection     ' 每列的数据类型
-    GroupingColumns As Collection ' 分组列
-    CalculatedColumns As Collection ' 计算列
-    
-    ' 业务语义
-    SummaryRows As Collection     ' 汇总行
-    KPIColumns As Collection      ' 关键指标列
-    TimeSeriesColumns As Collection ' 时间序列列
-    BudgetActualPairs As Collection ' 预算实际对比
-    TargetAchievementPairs As Collection ' 目标达成对比
-    
-    ' 数据特征
-    DataDensity As Single         ' 数据密度
-    ComplexityLevel As String     ' 复杂度级别
-    BusinessDomain As String      ' 业务领域推测
-End Type
-
-' ===== 美化报告结构 =====
-Private Type BeautificationReport
-    ' 基础信息
-    ReportID As String
-    Timestamp As Date
-    ProcessingTime As Long        ' 处理时间(毫秒)
-    
-    ' 操作摘要
-    ActionsPerformed As Collection
-    ChangesApplied As Integer
-    
-    ' 质量评估
-    QualityScore As QualityScore
-    
-    ' 专业建议
-    Recommendations As Collection
-    Warnings As Collection
-    
-    ' 用户反馈
-    UserSatisfaction As Integer   ' 1-5评分
-    UserComments As String
-End Type
-
-Private Type QualityScore
-    OverallScore As Single        ' 总分 0-100
-    AccessibilityScore As Single  ' 可访问性评分
-    ConsistencyScore As Single    ' 一致性评分
-    ReadabilityScore As Single    ' 可读性评分
-    ProfessionalScore As Single   ' 专业度评分
-    
-    ' 详细检查项
-    ColorContrastPass As Boolean  ' 色彩对比度检查
-    FontHierarchyPass As Boolean  ' 字体层次检查
-    AlignmentPass As Boolean      ' 对齐检查
-    SpacingPass As Boolean        ' 间距检查
-    DataVisualizationPass As Boolean ' 数据可视化检查
-End Type
-
-' ===== 用户个性化配置 =====
-Private Type UserProfile
-    UserID As String
-    CreatedDate As Date
-    LastActiveDate As Date
-    
-    ' 偏好设置
-    PreferredDesignStyle As String
-    FavoriteColors As Collection
-    FontPreferences As Collection
-    
-    ' 使用习惯
-    UsageHistory As Collection
-    FrequentActions As Collection
-    SkippedRecommendations As Collection
-    
-    ' 个性化模型
-    PersonalizationScore As Single
-    LearningModel As LearningModelData
-End Type
-
-' ===== 智能推荐结构 =====
-Private Type SmartRecommendation
-    RecommendationID As String
-    Type As String                ' Color, Font, Layout, Style
-    Priority As String            ' High, Medium, Low
-    Confidence As Single          ' 0-1 置信度
-    
-    Title As String
-    Description As String
-    Reason As String              ' 推荐理由
-    
-    BeforePreview As String       ' 应用前预览
-    AfterPreview As String        ' 应用后预览
-    
-    AutoApply As Boolean          ' 是否可自动应用
-    UserFeedback As String        ' 用户反馈
-End Type
-```
-
 ### 3.2 用户界面设计
 
-#### 3.2.1 智能Ribbon界面集成
-```xml
-<!-- 智能美化 Ribbon UI配置 -->
+#### 3.2.1 简化用户界面
+**简单选择界面**：
+- 下拉菜单选择预设主题
+- InputBox收集用户偏好
+- MsgBox显示操作结果
+
+**主要交互**：
+```vba
+Sub BeautifyTable()
+    ' 1. 检测表格范围
+    Dim tableRange As Range
+    Set tableRange = DetectTableRange()
+    
+    ' 2. 用户选择主题
+    Dim themeName As String
+    themeName = Application.InputBox("选择主题：" & vbCrLf & _
+                                   "1. 商务经典" & vbCrLf & _
+                                   "2. 财务专用" & vbCrLf & _
+                                   "3. 极简风格", _
+                                   "选择美化主题", "1")
+    
+    ' 3. 应用美化
+    Call ApplyPresetTheme(themeName)
+    
+    ' 4. 显示结果
+    MsgBox "表格美化完成！", vbInformation
+End Sub
+```
+
+### 3.3 与现有系统集成
+
+#### 3.3.1 简化API接口
+```vba
+' 与布局优化模块的集成接口
+Public Sub CallBeautifyFromLayoutOptimizer(tableRange As Range)
+    ' 被布局优化模块调用
+    Call BeautifyTable()
+End Sub
+
+' 基础配置保存/加载
+Public Sub SaveUserSettings()
+    ' 保存用户偏好到工作簿
+End Sub
+
+Public Sub LoadUserSettings()
+    ' 从工作簿加载用户偏好
+End Sub
+```
+
+## 4. 简化操作流程
+
+### 4.1 一键美化流程
+1. **检测表格** - 自动识别当前选择或活动区域的表格
+2. **选择主题** - 用户选择预设主题（商务/财务/极简）
+3. **应用美化** - 执行表头、边框、颜色、字体美化
+4. **完成提示** - 显示操作完成消息
+
+### 4.2 预设主题应用流程
+```vba
+Sub ApplyPresetTheme(themeName As String)
+    DisableUpdates
+    
+    Select Case themeName
+        Case "1", "商务经典"
+            Call ApplyBusinessTheme()
+        Case "2", "财务专用" 
+            Call ApplyFinancialTheme()
+        Case "3", "极简风格"
+            Call ApplyMinimalTheme()
+    End Select
+    
+    EnableUpdates
+    MsgBox "主题应用完成！"
+End Sub
+```
+
+## 5. 部署要求
+
+### 5.1 文件结构
+- `ExcelLayoutOptimizer.bas` - 单一VBA模块文件
+- 无需外部配置文件
+- 无需安装程序
+
+### 5.2 使用说明
+1. 将VBA代码导入Excel工作簿
+2. 运行`BeautifyTable()`函数
+3. 根据提示选择主题即可
+
+---
+
+**文档版本**：v4.0 单模块版  
+**更新日期**：2024年12月29日  
+**设计目标**：快速部署，单模块VBA实现，核心美化功能，个人和小团队使用
 <customUI xmlns="http://schemas.microsoft.com/office/2009/07/customui">
   <ribbon>
     <tabs>
