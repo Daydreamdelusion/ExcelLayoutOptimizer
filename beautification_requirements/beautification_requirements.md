@@ -1,22 +1,44 @@
-# Excel表格美化系统需求文档
+# Excel表格美化系统需求文档 v4.1
 
 ## 1. 项目概述
 
 ### 1.1 项目背景
 基于现有的Excel智能布局优化系统，新增表格美化功能模块，专注于提升Excel表格的视觉效果和专业度。该系统将在保持原有布局优化能力的基础上，增加丰富的格式化和美化功能。
 
-### 1.2 设计目标
-- **快速部署**：单模块VBA实现，导入即用
-- **操作简便**：一键应用专业级表格样式
-- **风格实用**：提供核心美化功能
-- **兼容性强**：与现有布局优化系统无缝集成
-- **性能优化**：确保大数据量表格的美化性能
+### 1.2 v4.1 重大升级
+**三大核心改进，实现专业级用户体验**：
 
-### 1.3 核心价值
+#### 1.2.1 交互体验质变：UserForm专业界面 🎨
+- **告别InputBox粗糙体验**：采用专业UserForm图形界面
+- **防错设计**：点选操作杜绝用户输入错误
+- **扩展友好**：新功能可轻松添加到界面中
+- **专业美观**：瞬间提升工具的专业档次
+
+#### 1.2.2 智能识别轻量化：关键词语义识别 🧠
+- **自动识别汇总行**：智能识别"合计"、"总计"等关键词
+- **上下文感知**：理解表格内容语义，不仅仅是格式结构
+- **特殊处理**：汇总行自动应用专业特殊样式
+- **轻量实现**：无需复杂AI，基于关键词匹配的简单高效方案
+
+#### 1.2.3 安全撤销机制：自动备份保障 🛡️
+- **操作前自动备份**：每次美化前自动创建工作表备份
+- **一键撤销恢复**：`UndoBeautify()`函数快速恢复原状
+- **用户信心保障**：用户可放心试验各种美化效果
+- **数据安全**：避免操作失误导致的数据损失
+
+### 1.3 设计目标
+- **快速部署**：单模块VBA实现，导入即用
+- **专业体验**：UserForm界面替代粗糙InputBox
+- **智能识别**：轻量级语义识别，自动处理特殊行
+- **安全可靠**：内置备份撤销机制，保障数据安全
+- **兼容性强**：与现有布局优化系统无缝集成
+
+### 1.4 核心价值
 - 快速将普通表格转换为专业级报表
 - 提高工作效率，减少手动格式化时间（节省80%以上时间）
 - 确保表格风格统一，提升文档专业度
 - 支持单模块部署，适合个人和小团队使用
+- 提供专业级用户体验，媲美商业软件插件
 
 ## 2. 功能需求详细说明
 
@@ -229,9 +251,181 @@ End Function
 - 最大限制：12pt
 - 最小限制：8pt
 
-### 2.6 简化美化功能
+### 2.6 v4.1 核心新功能
 
-#### 2.6.1 预设美化主题
+#### 2.6.1 UserForm专业界面 ⭐ (重大升级)
+**功能描述**：用专业的UserForm界面替代粗糙的InputBox交互
+
+**界面设计规范**：
+```vba
+' UserForm控件布局
+BeautifyForm.UserForm
+├── lblTitle: "Excel表格专业美化工具"
+├── frameTheme: "主题选择"
+│   ├── optBusiness: "● 商务经典"
+│   ├── optFinancial: "○ 财务专用"  
+│   └── optMinimal: "○ 极简风格"
+├── frameOptions: "高级选项"
+│   ├── chkFreezeHeader: "☑ 冻结首行"
+│   ├── chkZebraStripes: "☑ 隔行变色"
+│   └── chkSmartSummary: "☑ 智能识别汇总行"
+└── frameButtons: "操作按钮"
+    ├── btnBeautify: "开始美化"
+    └── btnCancel: "取消"
+```
+
+**交互逻辑**：
+- **防错设计**：只能通过OptionButton选择主题，杜绝输入错误
+- **实时反馈**：选择主题时显示对应的配色说明
+- **选项控制**：CheckBox控制各项高级功能的开关
+- **专业外观**：统一的控件样式和配色方案
+
+**实现优势**：
+- **专业感**：瞬间提升工具的档次，像商业插件
+- **易用性**：直观的点选操作，用户友好
+- **扩展性**：新增主题或功能只需添加控件
+- **一致性**：界面风格与Office套件保持一致
+
+#### 2.6.2 智能语义识别 ⭐ (重大升级)
+**功能描述**：基于关键词的轻量级表格语义识别
+
+**关键词库设计**：
+```vba
+' 汇总行识别关键词（中英文）
+Private summaryKeywords As String
+summaryKeywords = "合计,总计,小计,平均,汇总,统计,总和," & _
+                 "Total,Sum,Average,Subtotal,Summary,Grand Total"
+
+' 标题行识别关键词  
+Private titleKeywords As String
+titleKeywords = "标题,题目,主题,Title,Subject,Heading"
+```
+
+**识别算法**：
+```vba
+Function DetectSummaryRows(tableRange As Range) As Collection
+    Dim summaryRows As New Collection
+    Dim lastRow As Long
+    lastRow = tableRange.Rows.Count
+    
+    ' 从底部向上扫描（汇总行通常在底部）
+    For i = lastRow To Int(lastRow * 0.8) Step -1
+        For j = 1 To tableRange.Columns.Count
+            Dim cellValue As String
+            cellValue = tableRange.Cells(i, j).Value
+            
+            ' 检查是否包含汇总关键词
+            If ContainsKeyword(cellValue, summaryKeywords) Then
+                summaryRows.Add i
+                Exit For
+            End If
+        Next j
+    Next i
+    
+    Return summaryRows
+End Function
+```
+
+**智能处理策略**：
+- **汇总行特殊样式**：顶部双线边框、字体加粗、背景变色
+- **小计行处理**：虚线分隔、字体加粗
+- **标题行增强**：底部粗边框、字体放大
+- **异常值提醒**：识别"异常"、"错误"等关键词并标红
+
+**上下文感知价值**：
+- **自动化**：将手动识别的工作交给程序完成
+- **准确性**：基于业务常识的关键词匹配
+- **适应性**：可根据行业特点扩展关键词库
+- **专业性**：体现对表格业务逻辑的理解
+
+#### 2.6.3 安全撤销机制 ⭐ (重大升级)
+**功能描述**：自动备份和一键撤销功能，保障数据安全
+
+**备份策略**：
+```vba
+Sub CreateBackupBeforeBeautify()
+    ' 创建隐藏的备份工作表
+    Dim originalSheet As Worksheet
+    Dim backupSheet As Worksheet
+    
+    Set originalSheet = ActiveSheet
+    
+    ' 复制当前工作表
+    originalSheet.Copy Before:=originalSheet
+    Set backupSheet = ActiveSheet.Previous
+    
+    ' 设置备份表名称和属性
+    backupSheet.Name = originalSheet.Name & "_BeautifyBackup"
+    backupSheet.Visible = xlSheetHidden
+    
+    ' 添加备份标记
+    backupSheet.Cells(1, 1).Name = "BeautifyBackupMarker"
+End Sub
+```
+
+**撤销机制**：
+```vba
+Sub UndoBeautify()
+    Dim currentSheet As Worksheet
+    Dim backupSheet As Worksheet
+    Dim backupName As String
+    
+    Set currentSheet = ActiveSheet
+    backupName = currentSheet.Name & "_BeautifyBackup"
+    
+    ' 检查备份是否存在
+    If Not WorksheetExists(backupName) Then
+        MsgBox "未找到备份文件，无法撤销！", vbExclamation
+        Exit Sub
+    End If
+    
+    ' 确认撤销操作
+    If MsgBox("确定要撤销美化效果吗？当前修改将丢失！", vbYesNo + vbQuestion) = vbNo Then
+        Exit Sub
+    End If
+    
+    ' 执行撤销：删除当前表，恢复备份表
+    Application.DisplayAlerts = False
+    currentSheet.Delete
+    
+    Set backupSheet = Worksheets(backupName)
+    backupSheet.Visible = xlSheetVisible
+    backupSheet.Name = Replace(backupName, "_BeautifyBackup", "")
+    Application.DisplayAlerts = True
+    
+    MsgBox "美化效果已撤销，数据已完全恢复！", vbInformation
+End Sub
+```
+
+**清理机制**：
+```vba
+Sub CleanupBackups()
+    ' 清理所有备份工作表
+    Dim ws As Worksheet
+    Dim backupCount As Integer
+    
+    Application.DisplayAlerts = False
+    For Each ws In ThisWorkbook.Worksheets
+        If InStr(ws.Name, "_BeautifyBackup") > 0 Then
+            ws.Delete
+            backupCount = backupCount + 1
+        End If
+    Next ws
+    Application.DisplayAlerts = True
+    
+    MsgBox "已清理 " & backupCount & " 个备份文件", vbInformation
+End Sub
+```
+
+**安全保障价值**：
+- **操作信心**：用户可大胆试验，知道随时能恢复
+- **数据安全**：避免误操作导致的数据丢失
+- **完整恢复**：工作表级别的完整备份恢复
+- **智能清理**：提供备份清理功能，避免文件臃肿
+
+### 2.7 简化美化功能
+
+#### 2.7.1 预设美化主题
 **功能描述**：提供几套实用的预设美化主题
 
 **预设主题配置**：
@@ -361,16 +555,35 @@ End Function
 
 ## 3. 技术实现规范
 
-### 3.1 单模块VBA架构
+### 3.1 v4.1增强单模块VBA架构
 
-#### 3.1.1 简化模块结构设计
+#### 3.1.1 增强模块结构设计
 ```vba
-' ===== 主要功能入口 =====
-Public Sub BeautifyTable()                    ' 主功能入口，一键美化
-Public Sub ApplyPresetTheme(themeName As String)    ' 应用预设主题
-Public Sub QuickFormat()                      ' 快速格式化
+' ===== v4.1新增核心功能 =====
+Public Sub BeautifyTable()                   ' UserForm界面美化入口
+Public Sub ShowBeautifyForm()               ' 显示专业UserForm界面
+Public Sub UndoBeautify()                   ' 一键撤销美化效果
+Public Sub CleanupBackups()                 ' 清理备份工作表
 
-' ===== 核心美化功能 =====
+' ===== UserForm界面处理 =====
+Private Sub BeautifyForm_Initialize()       ' 初始化UserForm界面
+Private Sub optTheme_Click()                ' 主题选择事件处理
+Private Sub btnBeautify_Click()             ' 开始美化按钮事件
+Private Sub btnCancel_Click()               ' 取消按钮事件
+
+' ===== 智能语义识别 =====
+Private Function DetectSummaryRows(tableRange As Range) As Collection
+Private Function ContainsKeyword(text As String, keywords As String) As Boolean
+Private Sub ApplySummaryRowStyle(rowRange As Range, themeConfig As ThemeConfig)
+Private Function AnalyzeTableContent(tableRange As Range) As ContentAnalysis
+
+' ===== 安全备份机制 =====
+Private Sub CreateBackupBeforeBeautify()    ' 美化前自动备份
+Private Sub RestoreFromBackup()             ' 从备份恢复数据
+Private Function WorksheetExists(wsName As String) As Boolean
+Private Sub DeleteBackupWorksheet(wsName As String)
+
+' ===== 传统美化功能（保持兼容） =====
 ' 表头美化
 Private Sub ApplyHeaderBeautification(headerRange As Range)
 Private Function DetectHeaderRows() As Integer
@@ -411,7 +624,7 @@ Private Sub EnableUpdates()
 Private Sub OptimizeColumnWidths(tableRange As Range)
 ```
 
-#### 3.1.2 简化配置数据结构
+#### 3.1.2 v4.1增强配置数据结构
 ```vba
 ' 主题配置结构
 Type ThemeConfig
@@ -422,7 +635,35 @@ Type ThemeConfig
     FontName As String
     HeaderBold As Boolean
     BorderStyle As XlLineStyle
+    ' v4.1新增：汇总行特殊样式
+    SummaryRowStyle As SummaryStyle
 End Type
+
+' v4.1新增：汇总行样式配置
+Type SummaryStyle
+    TopBorderWeight As XlBorderWeight
+    FontBold As Boolean
+    BackgroundColor As Long
+    FontColor As Long
+End Type
+
+' v4.1新增：表格内容分析结果
+Type ContentAnalysis
+    SummaryRows As Collection
+    TitleRows As Collection
+    DataRows As Long
+    HasHeaders As Boolean
+    BusinessType As String  ' "Financial", "General", "Report"
+End Type
+
+' UserForm选项配置
+Type FormOptions
+    SelectedTheme As String
+    FreezeHeader As Boolean
+    ZebraStripes As Boolean
+    SmartSummary As Boolean
+End Type
+```
 
 ' 表格信息结构
 Type TableInfo
@@ -466,40 +707,180 @@ Private Function ValidateIntelligentResult(result As BeautificationResult) As Bo
 Private Sub LogIntelligentOperation(operation As IntelligentOperation)
 ```
 
-### 3.2 用户界面设计
+### 3.2 v4.1专业用户界面设计
 
-#### 3.2.1 简化用户界面
-**简单选择界面**：
-- 下拉菜单选择预设主题
-- InputBox收集用户偏好
-- MsgBox显示操作结果
-
-**主要交互**：
+#### 3.2.1 UserForm专业界面 ⭐ (替代InputBox)
+**界面布局设计**：
 ```vba
-Sub BeautifyTable()
-    ' 1. 检测表格范围
-    Dim tableRange As Range
-    Set tableRange = DetectTableRange()
+' UserForm: BeautifyForm
+' 尺寸: 380×280 像素
+' 风格: Office样式，与Excel界面一致
+
+' === 标题区域 ===
+lblTitle
+    Caption: "Excel表格专业美化工具"
+    Font: 微软雅黑, 14pt, Bold
+    ForeColor: #1E3A8A (深蓝色)
+    Position: 20, 15
+
+' === 主题选择区域 ===  
+frameTheme
+    Caption: "主题选择"
+    Position: 20, 50
+    Size: 330×80
     
-    ' 2. 用户选择主题
-    Dim themeName As String
-    themeName = Application.InputBox("选择主题：" & vbCrLf & _
-                                   "1. 商务经典" & vbCrLf & _
-                                   "2. 财务专用" & vbCrLf & _
-                                   "3. 极简风格", _
-                                   "选择美化主题", "1")
+    optBusiness
+        Caption: "● 商务经典 - 蓝色系专业配色"
+        Position: 15, 20
+        Font: 微软雅黑, 10pt
+        
+    optFinancial  
+        Caption: "○ 财务专用 - 绿色系，负数突出"
+        Position: 15, 40
+        
+    optMinimal
+        Caption: "○ 极简风格 - 黑白灰简约设计"  
+        Position: 15, 60
+
+' === 高级选项区域 ===
+frameOptions
+    Caption: "高级选项"
+    Position: 20, 140
+    Size: 330×80
     
-    ' 3. 应用美化
-    Call ApplyPresetTheme(themeName)
+    chkFreezeHeader
+        Caption: "☑ 冻结首行 (便于浏览大量数据)"
+        Position: 15, 20
+        Value: True  ' 默认选中
+        
+    chkZebraStripes
+        Caption: "☑ 隔行变色 (提高可读性)"
+        Position: 15, 40
+        Value: True
+        
+    chkSmartSummary
+        Caption: "☑ 智能识别汇总行 (自动特殊处理)"
+        Position: 15, 60  
+        Value: True
+
+' === 操作按钮区域 ===
+btnBeautify
+    Caption: "开始美化"
+    Position: 200, 235
+    Size: 80×25
+    Font: 微软雅黑, 10pt, Bold
+    BackColor: #1E3A8A (与标题颜色一致)
+    ForeColor: #FFFFFF
     
-    ' 4. 显示结果
-    MsgBox "表格美化完成！", vbInformation
+btnCancel
+    Caption: "取消"  
+    Position: 290, 235
+    Size: 60×25
+    Font: 微软雅黑, 10pt
+```
+
+**事件处理逻辑**：
+```vba
+Private Sub BeautifyForm_Initialize()
+    ' 设置默认选项
+    optBusiness.Value = True  ' 默认选择商务主题
+    chkFreezeHeader.Value = True
+    chkZebraStripes.Value = True  
+    chkSmartSummary.Value = True
+    
+    ' 显示主题说明
+    Call UpdateThemeDescription()
+End Sub
+
+Private Sub optBusiness_Click()
+    lblThemeDesc.Caption = "专业蓝色配色，适合商务报告和会议文档"
+End Sub
+
+Private Sub optFinancial_Click()
+    lblThemeDesc.Caption = "绿色系配色，负数红色突出，适合财务报表"
+End Sub
+
+Private Sub optMinimal_Click()
+    lblThemeDesc.Caption = "黑白灰简约设计，专注内容本身"
+End Sub
+
+Private Sub btnBeautify_Click()
+    ' 收集用户选项
+    Dim options As FormOptions
+    
+    If optBusiness.Value Then options.SelectedTheme = "Business"
+    If optFinancial.Value Then options.SelectedTheme = "Financial"  
+    If optMinimal.Value Then options.SelectedTheme = "Minimal"
+    
+    options.FreezeHeader = chkFreezeHeader.Value
+    options.ZebraStripes = chkZebraStripes.Value
+    options.SmartSummary = chkSmartSummary.Value
+    
+    ' 隐藏窗体并执行美化
+    Me.Hide
+    Call ExecuteBeautificationWithOptions(options)
+    
+    Unload Me
+End Sub
+
+Private Sub btnCancel_Click()
+    Unload Me
+End Sub
+```
+
+**界面交互优势**：
+- **防错设计**：只能点选，无法输入错误内容
+- **实时反馈**：选择主题时显示相应说明
+- **专业外观**：与Office界面风格一致
+- **扩展友好**：新增功能只需添加控件
+
+#### 3.2.2 新增撤销界面
+**撤销确认对话框**：
+```vba
+Private Sub ShowUndoConfirmation()
+    Dim result As VbMsgBoxResult
+    
+    result = MsgBox("确定要撤销美化效果吗？" & vbCrLf & vbCrLf & _
+                   "• 当前所有美化修改将丢失" & vbCrLf & _
+                   "• 数据将完全恢复到美化前状态" & vbCrLf & _
+                   "• 此操作不可逆转", _
+                   vbYesNo + vbQuestion + vbDefaultButton2, _
+                   "撤销美化效果")
+    
+    If result = vbYes Then
+        Call RestoreFromBackup()
+    End If
+End Sub
+```
+
+**操作结果反馈**：
+```vba
+Private Sub ShowOperationResult(success As Boolean, operationType As String)
+    If success Then
+        Select Case operationType
+            Case "Beautify"
+                MsgBox "✅ 表格美化完成！" & vbCrLf & vbCrLf & _
+                       "• 已应用专业美化样式" & vbCrLf & _
+                       "• 已自动创建备份，可随时撤销" & vbCrLf & _
+                       "• 如需撤销，请运行 UndoBeautify()", _
+                       vbInformation, "美化成功"
+                       
+            Case "Undo"
+                MsgBox "✅ 美化效果已撤销！" & vbCrLf & vbCrLf & _
+                       "• 数据已完全恢复到美化前状态" & vbCrLf & _
+                       "• 备份文件已清理", _
+                       vbInformation, "撤销成功"
+        End Select
+    Else
+        MsgBox "❌ 操作失败，请检查表格格式或联系技术支持", _
+               vbCritical, "操作失败"
+    End If
 End Sub
 ```
 
 ### 3.3 与现有系统集成
 
-#### 3.3.1 简化API接口
+#### 3.3.1 增强API接口
 ```vba
 ' 与布局优化模块的集成接口
 Public Sub CallBeautifyFromLayoutOptimizer(tableRange As Range)
@@ -517,30 +898,57 @@ Public Sub LoadUserSettings()
 End Sub
 ```
 
-## 4. 简化操作流程
+## 4. v4.1专业操作流程
 
-### 4.1 一键美化流程
-1. **检测表格** - 自动识别当前选择或活动区域的表格
-2. **选择主题** - 用户选择预设主题（商务/财务/极简）
-3. **应用美化** - 执行表头、边框、颜色、字体美化
-4. **完成提示** - 显示操作完成消息
+### 4.1 专业UserForm美化流程
+1. **运行主程序** - `BeautifyTable()` 自动弹出专业界面
+2. **直观选择主题** - 点选主题，查看实时说明
+3. **配置高级选项** - 勾选需要的功能（冻结、隔行、智能识别）
+4. **自动备份处理** - 点击"开始美化"，系统自动备份并美化
+5. **效果确认** - 查看结果，不满意可运行`UndoBeautify()`撤销
 
-### 4.2 预设主题应用流程
+### 4.2 智能识别处理流程
 ```vba
-Sub ApplyPresetTheme(themeName As String)
-    DisableUpdates
+Sub EnhancedBeautifyProcess()
+    ' 1. 自动备份
+    Call CreateBackupBeforeBeautify()
     
-    Select Case themeName
-        Case "1", "商务经典"
-            Call ApplyBusinessTheme()
-        Case "2", "财务专用" 
-            Call ApplyFinancialTheme()
-        Case "3", "极简风格"
-            Call ApplyMinimalTheme()
-    End Select
+    ' 2. 智能内容分析
+    Dim analysis As ContentAnalysis
+    Set analysis = AnalyzeTableContent(ActiveSheet.UsedRange)
     
-    EnableUpdates
-    MsgBox "主题应用完成！"
+    ' 3. 应用主题美化
+    Call ApplySelectedTheme(userOptions.SelectedTheme)
+    
+    ' 4. 智能识别处理
+    If userOptions.SmartSummary Then
+        For Each row In analysis.SummaryRows
+            Call ApplySummaryRowStyle(row, selectedTheme)
+        Next row
+    End If
+    
+    ' 5. 完成并反馈
+    Call ShowOperationResult(True, "Beautify")
+End Sub
+```
+
+### 4.3 安全撤销流程
+```vba
+Sub SafeUndoProcess()
+    ' 1. 检查备份存在性
+    If Not WorksheetExists(ActiveSheet.Name & "_BeautifyBackup") Then
+        MsgBox "未找到备份文件，无法撤销！", vbExclamation
+        Exit Sub
+    End If
+    
+    ' 2. 用户确认
+    Call ShowUndoConfirmation()
+    
+    ' 3. 执行撤销
+    Call RestoreFromBackup()
+    
+    ' 4. 完成反馈
+    Call ShowOperationResult(True, "Undo")
 End Sub
 ```
 
