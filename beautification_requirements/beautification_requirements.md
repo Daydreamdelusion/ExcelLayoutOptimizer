@@ -41,27 +41,52 @@
 ### 2.1 表头美化功能
 
 #### 2.1.1 自动表头识别
-**功能描述**：自动识别表头行，应用专业美化效果
+**功能描述**：基于多维度评分算法智能识别表头行，应用专业美化效果
+
+**智能检测算法**：
+采用多维度评分机制（总分100分，阈值60分）：
+- **文本内容评分**（30分）：全部为文本内容
+- **完整性评分**（25分）：无空单元格
+- **格式差异评分**（20分）：与数据行格式显著不同
+- **数据类型评分**（20分）：与下一行数据类型差异>50%
+- **字体样式评分**（15分）：加粗字体
+- **背景色评分**（10分）：有背景颜色设置
 
 **检测规则**：
-- 首行非空单元格占比 > 60%
-- 包含文本内容的单元格占比 > 70%
-- 自动检测1-2行表头
+- 逐行评分（最多检测前3行）
+- 达到60分阈值即认定为表头行
+- 自动识别单行或多行表头结构
+- 兜底机制：首行分数不足时仍作为表头处理
 
 **美化效果**：
 - **背景色**：商务蓝色渐变 (#1E3A8A → #3B82F6)
 - **字体**：加粗，白色字体
 - **边框**：底部粗边框，侧边细边框
 
+**核心算法示例**：
 ```vba
-Sub ApplyHeaderBeautification(headerRange As Range)
-    With headerRange
-        .Interior.Color = RGB(30, 58, 138)  ' 商务蓝
-        .Font.Bold = True
-        .Font.Color = RGB(255, 255, 255)    ' 白色字体
-        .Borders(xlEdgeBottom).Weight = xlThick
-    End With
-End Sub
+Function DetectHeaderRange(tableRange As Range) As Range
+    Dim headerScore As Long, rowNum As Long
+    
+    For rowNum = 1 To 3  ' 最多检测3行
+        headerScore = 0
+        Set testRow = tableRange.Rows(rowNum)
+        
+        ' 多维度评分
+        If IsAllText(testRow) Then headerScore = headerScore + 30        ' 文本内容
+        If HasNoEmpty(testRow) Then headerScore = headerScore + 25       ' 完整性
+        If HasFormatting(testRow) Then headerScore = headerScore + 20    ' 格式差异
+        If HasTypeDifference(testRow, nextRow) Then headerScore = headerScore + 20  ' 类型差异
+        If HasBoldFont(testRow) Then headerScore = headerScore + 15      ' 字体样式
+        If HasBackgroundColor(testRow) Then headerScore = headerScore + 10  ' 背景色
+        
+        ' 阈值判断（60分）
+        If headerScore < 60 Then
+            Set DetectHeaderRange = tableRange.Rows("1:" & (rowNum - 1))
+            Exit Function
+        End If
+    Next rowNum
+End Function
 ```
 
 ### 2.2 条件格式智能应用

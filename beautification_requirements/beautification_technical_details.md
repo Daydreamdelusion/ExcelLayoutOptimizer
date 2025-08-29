@@ -839,7 +839,7 @@ End Function
 ' ========== 公共API接口 ==========
 
 ' 主美化函数
-Public Sub BeautifyTable(Optional selectedTheme As String = "Business")
+Public Sub BeautifyTable()
     Dim targetRange As Range
     Dim config As BeautifyConfig
     
@@ -854,8 +854,8 @@ Public Sub BeautifyTable(Optional selectedTheme As String = "Business")
     ' 初始化撤销日志
     InitializeBeautifyLog
     
-    ' 获取主题配置
-    config = GetThemeConfig(selectedTheme)
+    ' 获取主题配置（使用默认商务主题）
+    config = GetThemeConfig("Business")
     
     ' 执行美化
     If OptimizedExecute("Beautify", targetRange) Then
@@ -869,16 +869,6 @@ Public Sub UndoBeautify()
         ' 成功消息已在函数内显示
     End If
 End Sub
-
-' 快速美化（使用默认设置）
-Public Sub QuickBeautify()
-    BeautifyTable "Business"
-End Sub
-
-' 获取可用主题列表
-Public Function GetAvailableThemes() As Variant
-    GetAvailableThemes = Array("Business", "Financial", "Minimal")
-End Function
 ```
 
 ### 9.2 高级接口
@@ -899,18 +889,18 @@ Public Sub CustomBeautify(config As BeautifyConfig)
 End Sub
 
 ' 部分美化
-Public Sub BeautifySelection(selectionRange As Range, Optional theme As String = "Business")
+Public Sub BeautifySelection(selectionRange As Range)
     If Not ValidateBeautifyOperation(selectionRange) Then Exit Sub
     
     Dim config As BeautifyConfig
-    config = GetThemeConfig(theme)
+    config = GetThemeConfig("Business")  ' 使用默认商务主题
     
     InitializeBeautifyLog
     ApplyThemeStyle selectionRange, config
 End Sub
 
 ' 批量美化
-Public Sub BatchBeautify(Optional theme As String = "Business")
+Public Sub BatchBeautify()
     Dim ws As Worksheet
     Dim successCount As Long
     
@@ -920,7 +910,7 @@ Public Sub BatchBeautify(Optional theme As String = "Business")
         If DetectTableRange() Is Nothing Then
             ' 跳过空表
         Else
-            BeautifyTable theme
+            BeautifyTable  ' 使用默认主题
             successCount = successCount + 1
         End If
         On Error GoTo 0
