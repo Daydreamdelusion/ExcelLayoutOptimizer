@@ -142,21 +142,45 @@ End Sub
 **视觉等效实现方案**：
 ```vba
 ' 使用浅色内填充 + 分层边框实现"伪圆角"效果
-Sub ApplyPseudoRoundedBorder(rng As Range)
+Sub ApplyLayeredBorderStyle(rng As Range)
     With rng
         ' 主体浅色填充
         .Interior.Color = RGB(248, 250, 252)
         
-        ' 外层粗边框
+        ' 外层粗边框（主边框）
         .Borders(xlEdgeTop).Weight = xlThick
         .Borders(xlEdgeTop).Color = RGB(100, 116, 139)
+        .Borders(xlEdgeBottom).Weight = xlThick
+        .Borders(xlEdgeBottom).Color = RGB(100, 116, 139)
+        .Borders(xlEdgeLeft).Weight = xlThick
+        .Borders(xlEdgeLeft).Color = RGB(100, 116, 139)
+        .Borders(xlEdgeRight).Weight = xlThick
+        .Borders(xlEdgeRight).Color = RGB(100, 116, 139)
         
         ' 内层细边框创建层次感
         .Borders(xlInsideHorizontal).Weight = xlThin
         .Borders(xlInsideHorizontal).Color = RGB(226, 232, 240)
+        .Borders(xlInsideVertical).Weight = xlThin
+        .Borders(xlInsideVertical).Color = RGB(226, 232, 240)
+    End With
+End Sub
+```
+
+**TableStyle组合方案**：
+```vba
+Sub ApplyTableStyleWithBorders(tbl As ListObject)
+    ' 使用TableStyle + 边框组合，避免修改列宽
+    tbl.TableStyle = "ELO_Business"
+    
+    With tbl.Range
+        ' 外边框加强
+        .Borders(xlEdgeTop).Weight = xlMedium
+        .Borders(xlEdgeBottom).Weight = xlMedium
+        .Borders(xlEdgeLeft).Weight = xlMedium
+        .Borders(xlEdgeRight).Weight = xlMedium
         
-        ' 伪分隔列（通过列宽和填充实现）
-        .Columns(1).ColumnWidth = 0.5  ' 窄列作为分隔
+        ' 表头底边框突出
+        tbl.HeaderRowRange.Borders(xlEdgeBottom).Weight = xlThick
     End With
 End Sub
 ```
@@ -257,19 +281,19 @@ NegativeFormats = Array( _
 Function SelectOptimalFont(contentType As String) As String
     Select Case contentType
         Case "ChineseHeader"
-            Return "微软雅黑"
+            SelectOptimalFont = "微软雅黑"
         Case "ChineseData"
-            Return "微软雅黑 Light"
+            SelectOptimalFont = "微软雅黑 Light"
         Case "EnglishHeader"
-            Return "Calibri"
+            SelectOptimalFont = "Calibri"
         Case "EnglishData"
-            Return "Arial"
+            SelectOptimalFont = "Arial"
         Case "Number"
-            Return "Consolas"
+            SelectOptimalFont = "Consolas"
         Case "Currency"
-            Return "Times New Roman"
+            SelectOptimalFont = "Times New Roman"
         Case "Mixed"
-            Return "微软雅黑"
+            SelectOptimalFont = "微软雅黑"
     End Select
 End Function
 ```
@@ -353,7 +377,7 @@ Function DetectSummaryRows(tableRange As Range) As Collection
         Next j
     Next i
     
-    Return summaryRows
+    Set DetectSummaryRows = summaryRows
 End Function
 ```
 
@@ -468,16 +492,26 @@ Sub UndoBeautify()
 End Sub
 ```
 
-**清理机制**：
+**手动应急备份**（可选）：
 ```vba
-Sub CleanupBackups()
-    ' 清理所有备份工作表
-    Dim ws As Worksheet
-    Dim backupCount As Integer
+Sub CreateManualBackup()
+    ' 仅作为手动应急工具，不在自动流程中使用
+    ' 用户可选择性调用，用于重要数据的额外保险
+    Dim userChoice As VbMsgBoxResult
+    userChoice = MsgBox("是否创建手动备份工作表？" & vbCrLf & _
+                       "注意：这会复制整个工作表，仅建议重要数据使用", _
+                       vbYesNo + vbQuestion, "手动备份确认")
     
-    Application.DisplayAlerts = False
-    For Each ws In ThisWorkbook.Worksheets
-        If InStr(ws.Name, "_BeautifyBackup") > 0 Then
+    If userChoice = vbYes Then
+        ActiveSheet.Copy After:=ActiveSheet
+        ActiveSheet.Name = ActiveSheet.Previous.Name & "_ManualBackup_" & Format(Now, "hhmmss")
+        ActiveSheet.Visible = xlSheetHidden
+        MsgBox "手动备份已创建：" & ActiveSheet.Name, vbInformation
+    End If
+End Sub
+```
+
+**说明**：手动备份仅作为用户可选的额外保险，不在自动美化流程中使用，避免对命名区域/外链/透视缓存的破坏。
             ws.Delete
             backupCount = backupCount + 1
         End If
@@ -540,13 +574,16 @@ End Sub
 **优化的规则优先级**：
 1. **错误值检测** - 公式：`=ISERROR(A1)`
 2. **空值标记** - 公式：`=ISBLANK(A1)`  
-3. **重复值检测** - 公式：`=COUNTIF($A:$A,A1)>1`
-4. **数值阈值** - 公式：`=A1<0` (负数检测)
-5. **文本匹配** - 公式：`=SEARCH("错误",A1)` (关键词检测)
+3. **重复值检测** - 按列应用：`=COUNTIF(A:A,A1)>1`（注意：按列应用，不固定范围）
+4. **数值阈值** - 逐列判定：`=A1<0` (负数检测，仅应用于数值列)
+5. **文本匹配** - 公式：`=ISNUMBER(SEARCH("错误",A1))` (关键词检测)
 
-**批量应用策略**：
+**逐列应用策略**：
 ```vba
 Sub ApplyOptimizedConditionalFormat(dataRange As Range)
+    Dim col As Range
+    Dim colLetter As String
+    
     Application.ScreenUpdating = False
     Application.Calculation = xlCalculationManual
     Application.EnableEvents = False
@@ -554,25 +591,36 @@ Sub ApplyOptimizedConditionalFormat(dataRange As Range)
     ' 清除现有条件格式
     dataRange.FormatConditions.Delete
     
-    ' 1. 错误值检测（最高优先级）
+    ' 1. 错误值检测（应用到整个数据区域）
     With dataRange.FormatConditions.Add(xlExpression, , "=ISERROR(" & dataRange.Cells(1, 1).Address(False, False) & ")")
         .Interior.Color = RGB(254, 226, 226)  ' 浅红色
         .StopIfTrue = True
     End With
     
-    ' 2. 空值检测
+    ' 2. 空值检测（应用到整个数据区域）
     With dataRange.FormatConditions.Add(xlExpression, , "=ISBLANK(" & dataRange.Cells(1, 1).Address(False, False) & ")")
         .Interior.Color = RGB(243, 244, 246)  ' 浅灰色
         .StopIfTrue = False
     End With
     
-    ' 3. 负数检测（仅数值列）
-    If IsNumericColumn(dataRange) Then
-        With dataRange.FormatConditions.Add(xlCellValue, xlLess, 0)
-            .Font.Color = RGB(220, 38, 38)  ' 红色字体
+    ' 3. 逐列应用重复值检测和负数检测
+    For Each col In dataRange.Columns
+        colLetter = Split(col.Cells(1, 1).Address, "$")(1)
+        
+        ' 重复值检测（按当前列）
+        With col.FormatConditions.Add(xlExpression, , "=COUNTIF(" & colLetter & ":" & colLetter & "," & col.Cells(1, 1).Address(False, False) & ")>1")
+            .Interior.Color = RGB(255, 251, 235)  ' 浅黄色
             .StopIfTrue = False
         End With
-    End If
+        
+        ' 负数检测（仅数值列）
+        If IsNumericColumn(col) Then
+            With col.FormatConditions.Add(xlCellValue, xlLess, 0)
+                .Font.Color = RGB(220, 38, 38)  ' 红色字体
+                .StopIfTrue = False
+            End With
+        End If
+    Next col
     
     Application.EnableEvents = True
     Application.Calculation = xlCalculationAutomatic
@@ -672,9 +720,20 @@ End Sub
 ```vba
 Sub AddPrintWatermark()
     ' 在页眉插入水印图片（可打印）
+    Dim watermarkPath As String
+    
+    ' 动态获取水印路径，避免硬编码
+    watermarkPath = ThisWorkbook.Path & "\Assets\Watermark.png"
+    
+    ' 检查文件是否存在
+    If Dir(watermarkPath) = "" Then
+        MsgBox "水印文件未找到，跳过水印设置", vbInformation
+        Exit Sub
+    End If
+    
     With ActiveSheet.PageSetup
         .CenterHeader = "&G"  ' 图片占位符
-        .CenterHeaderPicture.Filename = "C:\Watermark.png"
+        .CenterHeaderPicture.Filename = watermarkPath
         .CenterHeaderPicture.Height = 200
         .CenterHeaderPicture.Width = 200
     End With
@@ -1122,92 +1181,18 @@ End Sub
 
 ---
 
-**文档版本**：v4.0 单模块版  
-**更新日期**：2024年12月29日  
-**设计目标**：快速部署，单模块VBA实现，核心美化功能，个人和小团队使用
-<customUI xmlns="http://schemas.microsoft.com/office/2009/07/customui">
-  <ribbon>
-    <tabs>
-      <tab id="IntelligentBeautifyTab" label="智能美化">
-        <group id="IntelligentActions" label="智能操作">
-          <button id="LaunchWizard" label="智能向导" size="large" 
-                  imageMso="WizardDialog" 
-                  supertip="启动引导式美化向导，智能分析表格并提供专业建议" />
-          <button id="OneClickIntelligent" label="一键智能美化" size="large"
-                  imageMso="AutoSum"
-                  supertip="基于AI分析自动应用最佳美化方案" />
-        </group>
-        
-        <group id="DesignIntelligence" label="设计智能">
-          <splitButton id="DesignStyleSelector" size="large">
-            <button id="ApplyDesignStyle" label="设计风格" />
-            <menu id="DesignStyleMenu">
-              <button id="ModernMinimal" label="现代简约" />
-              <button id="DataDashboard" label="数据仪表盘" />
-              <button id="FinancialStrict" label="财务严谨" />
-              <button id="AcademicReport" label="学术报告" />
-              <button id="CustomStyle" label="自定义风格..." />
-            </menu>
-          </splitButton>
-          
-          <splitButton id="ColorIntelligence" size="normal">
-            <button id="GenerateColors" label="智能配色" />
-            <menu id="ColorMenu">
-              <button id="BrandColorPicker" label="选择品牌主色" />
-              <button id="TriadicColors" label="三色系配色" />
-              <button id="ComplementaryColors" label="互补色配色" />
-              <button id="AnalogousColors" label="邻近色配色" />
-              <button id="MonochromaticColors" label="单色渐变" />
-            </menu>
-          </splitButton>
-          
-          <button id="TypographyHierarchy" label="字体层次" size="normal"
-                  supertip="自动构建专业的字体层次体系" />
-        </group>
-        
-        <group id="ContextAware" label="上下文感知">
-          <button id="SemanticAnalysis" label="语义分析" size="normal"
-                  supertip="智能分析表格结构和数据含义" />
-          <button id="DataStorytelling" label="数据叙事" size="normal"
-                  supertip="创建差异分析、目标可视化等数据故事元素" />
-          <button id="SmartRecommendations" label="智能建议" size="normal"
-                  supertip="基于表格内容提供个性化美化建议" />
-        </group>
-        
-        <group id="TraditionalTools" label="传统工具">
-          <button id="HeaderSettings" label="表头" size="small" />
-          <button id="BorderSettings" label="边框" size="small" />
-          <button id="ColorSettings" label="颜色" size="small" />
-          <button id="FontSettings" label="字体" size="small" />
-          <button id="ConditionalSettings" label="条件格式" size="small" />
-        </group>
-        
-        <group id="IntelligentTools" label="智能工具">
-          <button id="PreviewChanges" label="预览" size="normal"
-                  imageMso="PrintPreview" />
-          <button id="BeautificationReport" label="美化报告" size="normal"
-                  imageMso="DataFormDesign" />
-          <button id="QualityCheck" label="质量检查" size="normal"
-                  imageMso="SpellingAndGrammar" />
-          <button id="UndoIntelligent" label="智能撤销" size="normal"
-                  imageMso="Undo" />
-        </group>
-        
-        <group id="Personalization" label="个性化">
-          <button id="SavePersonalStyle" label="保存风格" size="normal"
-                  supertip="保存当前设置为个人风格模板" />
-          <button id="LearnPreferences" label="学习偏好" size="normal"
-                  supertip="系统学习您的使用习惯，提供个性化建议" />
-          <button id="ExportImportSettings" label="设置迁移" size="normal"
-                  supertip="导出/导入个性化设置" />
-        </group>
-      </tab>
-    </tabs>
-  </ribbon>
-</customUI>
-```
+**文档版本**：v4.1 单模块优化版  
+**更新日期**：2025年8月29日  
+**设计目标**：单模块VBA实现，逻辑撤销，Excel兼容性，性能优化
 
-#### 3.2.2 智能设置对话框
+#### 3.2.2 单模块架构说明
+**设计原则**：
+- **单VBA模块**：不支持Ribbon customUI（需要加载项架构）
+- **UserForm界面**：替代复杂Ribbon界面
+- **直接调用**：通过Alt+F8或VBA编辑器直接运行
+- **核心功能聚焦**：主题样式、条件格式、撤销机制
+
+**调用方式**：
 ```vba
 ' 智能美化向导窗体控件配置
 Private Sub InitializeIntelligentWizard()
@@ -1375,20 +1360,22 @@ End Sub
 Public Function BeautifyAPI(action As String, params As Dictionary) As Variant
     Select Case action
         Case "beautify"
-            Return ExecuteBeautify(params)
+            BeautifyAPI = ExecuteBeautify(params)
         Case "preview"
-            Return GeneratePreview(params)
+            BeautifyAPI = GeneratePreview(params)
         Case "undo"
-            Return UndoLastOperation()
+            BeautifyAPI = UndoLastOperation()
         Case "getThemes"
-            Return GetAvailableThemes()
+            BeautifyAPI = GetAvailableThemes()
         Case "saveTheme"
-            Return SaveCustomTheme(params)
+            BeautifyAPI = SaveCustomTheme(params)
         Case "exportConfig"
-            Return ExportConfiguration(params)
+            BeautifyAPI = ExportConfiguration(params)
         Case "importConfig"
-            Return ImportConfiguration(params)
+            BeautifyAPI = ImportConfiguration(params)
     End Select
+End Function
+```
 End Function
 
 ' ===== 事件钩子 =====
@@ -1547,13 +1534,16 @@ End Sub
 Private Function RecommendOptimalStyle(semantics As TableSemantics) As String
     ' 基于语义分析推荐最佳样式
     If semantics.BusinessDomain = "Financial" Then
-        Return "财务严谨"
+        RecommendOptimalStyle = "财务严谨"
+        Exit Function
     ElseIf semantics.ComplexityLevel = "High" Then
-        Return "现代简约"  ' 复杂数据用简约风格
+        RecommendOptimalStyle = "现代简约"  ' 复杂数据用简约风格
+        Exit Function
     ElseIf semantics.KPIColumns.Count > 3 Then
-        Return "数据仪表盘"  ' 多KPI用仪表盘风格
+        RecommendOptimalStyle = "数据仪表盘"  ' 多KPI用仪表盘风格
+        Exit Function
     Else
-        Return "现代简约"  ' 默认
+        RecommendOptimalStyle = "现代简约"  ' 默认
     End If
 End Function
 ```
@@ -1699,7 +1689,7 @@ Private Function GetSmartDefaults(tableRange As Range) As BeautificationConfig
     ' 根据数据密度决定条纹
     config.ZebraStripes = (tableRange.Rows.Count > 20)
     
-    Return config
+    Set GenerateSmartConfig = config
 End Function
 ```
 
