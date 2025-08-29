@@ -20,9 +20,10 @@
 - **特殊处理**：汇总行自动应用专业特殊样式
 - **轻量实现**：无需复杂AI，基于关键词匹配的简单高效方案
 
-#### 1.2.3 安全撤销机制：自动备份保障 🛡️
-- **操作前自动备份**：每次美化前自动创建工作表备份
-- **一键撤销恢复**：`UndoBeautify()`函数快速恢复原状
+#### 1.2.3 智能撤销机制：逻辑撤销保障 🛡️
+- **变更日志记录**：记录所有新增样式名和条件格式规则ID
+- **逐项回滚撤销**：`UndoBeautify()`函数基于日志精确回滚
+- **O(1)级性能**：秒级撤销，不影响数据结构
 - **用户信心保障**：用户可放心试验各种美化效果
 - **数据安全**：避免操作失误导致的数据损失
 
@@ -205,10 +206,10 @@ End Sub
   - 底部边框：粗线
   - 颜色：#1F2937（深灰）
   
-- **关键指标**：
-  - 样式：阴影边框
-  - 阴影偏移：2pt
-  - 阴影颜色：50%透明度黑色
+- **关键指标**（视觉等效方案）：
+  - 样式：双层边框（外粗内细）
+  - 填充：浅色内填充模拟阴影效果
+  - 颜色：深浅边框组合
 
 ### 2.3 数据突出显示
 
@@ -222,11 +223,11 @@ End Sub
 
 **显示格式详细配置**：
 ```vba
-' 格式模板
+' 格式模板（修正语法）
 NegativeFormats = Array( _
     "(#,##0.00)",          ' 括号格式
     "-#,##0.00",           ' 负号格式
-    "▲#,##0.00",          ' 三角形格式
+    """▲""#,##0.00",       ' 三角形格式（引号包围）
     "[Red]-#,##0.00",      ' 红色负号
     "[Red](#,##0.00)"      ' 红色括号
 )
@@ -572,11 +573,11 @@ End Sub
 - **分层顺序**：错误→空值→重复→阈值→文本/日期
 
 **优化的规则优先级**：
-1. **错误值检测** - 公式：`=ISERROR(A1)`
-2. **空值标记** - 公式：`=ISBLANK(A1)`  
-3. **重复值检测** - 按列应用：`=COUNTIF(A:A,A1)>1`（注意：按列应用，不固定范围）
-4. **数值阈值** - 逐列判定：`=A1<0` (负数检测，仅应用于数值列)
-5. **文本匹配** - 公式：`=ISNUMBER(SEARCH("错误",A1))` (关键词检测)
+1. **错误值检测** - 公式：`=ISERROR(RC)`
+2. **空值标记** - 公式：`=ISBLANK(RC)`  
+3. **重复值检测** - 按列应用：`=COUNTIF(C,RC)>1`（注意：按列应用，不固定范围）
+4. **数值阈值** - 逐列判定：`=RC<0` (负数检测，仅应用于数值列)
+5. **文本匹配** - 公式：`=ISNUMBER(SEARCH("错误",RC))` (关键词检测)
 
 **逐列应用策略**：
 ```vba
@@ -592,13 +593,13 @@ Sub ApplyOptimizedConditionalFormat(dataRange As Range)
     dataRange.FormatConditions.Delete
     
     ' 1. 错误值检测（应用到整个数据区域）
-    With dataRange.FormatConditions.Add(xlExpression, , "=ISERROR(" & dataRange.Cells(1, 1).Address(False, False) & ")")
+    With dataRange.FormatConditions.Add(xlExpression, , "=ISERROR(RC)")
         .Interior.Color = RGB(254, 226, 226)  ' 浅红色
         .StopIfTrue = True
     End With
     
     ' 2. 空值检测（应用到整个数据区域）
-    With dataRange.FormatConditions.Add(xlExpression, , "=ISBLANK(" & dataRange.Cells(1, 1).Address(False, False) & ")")
+    With dataRange.FormatConditions.Add(xlExpression, , "=ISBLANK(RC)")
         .Interior.Color = RGB(243, 244, 246)  ' 浅灰色
         .StopIfTrue = False
     End With
@@ -608,7 +609,7 @@ Sub ApplyOptimizedConditionalFormat(dataRange As Range)
         colLetter = Split(col.Cells(1, 1).Address, "$")(1)
         
         ' 重复值检测（按当前列）
-        With col.FormatConditions.Add(xlExpression, , "=COUNTIF(" & colLetter & ":" & colLetter & "," & col.Cells(1, 1).Address(False, False) & ")>1")
+        With col.FormatConditions.Add(xlExpression, , "=COUNTIF(C,RC)>1")
             .Interior.Color = RGB(255, 251, 235)  ' 浅黄色
             .StopIfTrue = False
         End With
@@ -742,16 +743,20 @@ End Sub
 
 - **分页预览指引**：
   - ~~实时绘制分隔线~~：影响性能
-  - **替代方案**：使用分页预览模式 + 虚线边框指示
+  - **替代方案**：使用分页预览模式 + 安全的边框指示
 ```vba
 Sub ShowPageBreaks()
     ActiveWindow.View = xlPageBreakPreview
-    ' 用虚线边框标记分页位置
-    With ActiveSheet.HPageBreaks(1).Location.Borders(xlEdgeTop)
-        .LineStyle = xlDash
-        .Weight = xlMedium
-        .Color = RGB(128, 128, 128)
-    End With
+    
+    ' 安全检查：确保分页存在
+    If ActiveSheet.HPageBreaks.Count > 0 Then
+        ' 用虚线边框标记分页位置
+        With ActiveSheet.HPageBreaks(1).Location.Borders(xlEdgeTop)
+            .LineStyle = xlDash
+            .Weight = xlMedium
+            .Color = RGB(128, 128, 128)
+        End With
+    End If
 End Sub
 ```
 
@@ -792,11 +797,11 @@ Private Function ContainsKeyword(text As String, keywords As String) As Boolean
 Private Sub ApplySummaryRowStyle(rowRange As Range, themeConfig As ThemeConfig)
 Private Function AnalyzeTableContent(tableRange As Range) As ContentAnalysis
 
-' ===== 安全备份机制 =====
-Private Sub CreateBackupBeforeBeautify()    ' 美化前自动备份
-Private Sub RestoreFromBackup()             ' 从备份恢复数据
-Private Function WorksheetExists(wsName As String) As Boolean
-Private Sub DeleteBackupWorksheet(wsName As String)
+' ===== 逻辑撤销机制 =====
+Private Sub InitializeBeautifyLog()         ' 初始化变更日志
+Private Sub LogStyleChange(styleName As String)  ' 记录样式变更
+Private Sub LogCFRule(ruleAddress As String)     ' 记录CF规则
+Private Function CreateManualBackup() As String  ' 手动应急备份（可选）
 
 ' ===== 传统美化功能（保持兼容） =====
 ' 表头美化
@@ -1119,14 +1124,14 @@ End Sub
 1. **运行主程序** - `BeautifyTable()` 自动弹出专业界面
 2. **直观选择主题** - 点选主题，查看实时说明
 3. **配置高级选项** - 勾选需要的功能（冻结、隔行、智能识别）
-4. **自动备份处理** - 点击"开始美化"，系统自动备份并美化
+4. **变更日志记录** - 点击"开始美化"，系统记录变更并美化
 5. **效果确认** - 查看结果，不满意可运行`UndoBeautify()`撤销
 
 ### 4.2 智能识别处理流程
 ```vba
 Sub EnhancedBeautifyProcess()
-    ' 1. 自动备份
-    Call CreateBackupBeforeBeautify()
+    ' 1. 初始化变更日志
+    Call InitializeBeautifyLog()
     
     ' 2. 智能内容分析
     Dim analysis As ContentAnalysis
@@ -1659,7 +1664,7 @@ End Function
 ```
 
 #### 5.3.2 数据保护措施
-- **自动备份**：美化前自动创建备份
+- **逻辑撤销**：基于变更日志精确回滚
 - **公式保护**：保留原始公式不被覆盖
 - **数据验证**：保持数据验证规则
 - **链接保护**：不破坏外部链接
@@ -1909,7 +1914,18 @@ ExcelLayoutOptimizer_v4.1/
 - **维护简单**：一个文件包含所有功能
 - **安全可控**：用户可查看所有代码，透明度高
 
-### 8.2 功能精简说明
+#### 8.2.3 Ribbon界面说明
+**当前版本限制**：
+- **单模块(.bas)**：不支持Ribbon customUI
+- **原因**：Ribbon需要加载项(.xlam)架构支持
+- **替代方案**：UserForm专业界面
+
+**未来扩展**：
+- Ribbon界面可考虑在企业版中作为可选扩展
+- 需要重构为加载项架构(.xlam格式)
+- 当前专注于单模块部署的核心功能
+
+### 8.3 功能精简说明
 
 #### 8.2.1 移除的复杂功能
 - ~~Ribbon自定义标签~~：避免复杂部署
