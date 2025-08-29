@@ -94,45 +94,59 @@ End Function
 #### 2.2.1 标准条件格式规则
 **功能描述**：应用最常用的条件格式规则
 
-**内置规则（R1C1相对引用格式）**：
-1. **负数标红**：`=RC<0+N(0*LEN("ELO_TAG"))` - 红色字体突出负数
-2. **重复值标黄**：`=AND(RC<>"",COUNTIF(列数据区,RC)>1)+N(0*LEN("ELO_TAG"))` - 黄色背景标记重复
-3. **空值标灰**：`=ISBLANK(RC)+N(0*LEN("ELO_TAG"))` - 灰色背景提醒空值
-4. **错误标红**：`=ISERROR(RC)+N(0*LEN("ELO_TAG"))` - 红色背景标记错误
+**内置规则（A1相对引用格式）**：
+1. **负数标红**：`=$A1<0+N(0*LEN("ELO_TAG"))` - 红色字体突出负数
+2. **重复值标黄**：`=AND($A1<>"",COUNTIF($A:$A,$A1)>1)+N(0*LEN("ELO_TAG"))` - 黄色背景标记重复
+3. **空值标灰**：`=ISBLANK(A1)+N(0*LEN("ELO_TAG"))` - 灰色背景提醒空值
+4. **错误标红**：`=ISERROR(A1)+N(0*LEN("ELO_TAG"))` - 红色背景标记错误
 
 **应用策略**：
 ```vba
 Sub ApplyStandardConditionalFormat(dataRange As Range)
     Dim sessionTag As String
-    sessionTag = "ELO_" & Format(Now, "yyyymmddhhmmss")
+    sessionTag = "ELO_" & g_BeautifyHistory.SessionId
     
-    ' 错误值检测（优先级最高）
-    With dataRange.FormatConditions.Add(xlExpression, , "=ISERROR(RC)+N(0*LEN(""" & sessionTag & """))")
+    ' 预清理同标签规则，确保幂等性
+    ClearExistingRules dataRange, sessionTag
+    
+    ' 错误值检测（优先级最高） - 修正为绝对列相对行引用
+    With dataRange.FormatConditions.Add(xlExpression, , "=ISERROR($A1)+N(0*LEN(""" & sessionTag & """))")
         .Interior.Color = RGB(254, 226, 226)  ' 浅红背景
+        .Priority = 1
         .StopIfTrue = False
     End With
+    LogCFRule dataRange.Address & "|" & sessionTag & "|Error|1"
     
-    ' 空值标记
-    With dataRange.FormatConditions.Add(xlExpression, , "=ISBLANK(RC)+N(0*LEN(""" & sessionTag & """))")
+    ' 空值标记 - 修正为绝对列相对行引用
+    With dataRange.FormatConditions.Add(xlExpression, , "=ISBLANK($A1)+N(0*LEN(""" & sessionTag & """))")
         .Interior.Color = RGB(249, 250, 251)  ' 浅灰背景
+        .Priority = 2
         .StopIfTrue = False
     End With
+    LogCFRule dataRange.Address & "|" & sessionTag & "|Blank|2"
     
-    ' 负数突出（统一为表达式型）
-    With dataRange.FormatConditions.Add(xlExpression, , "=RC<0+N(0*LEN(""" & sessionTag & """))")
-        .Font.Color = RGB(220, 38, 38)  ' 红色字体
-        .StopIfTrue = False
-    End With
-    
-    ' 重复值检测（逐列应用，限定范围）
-    Dim col As Range
+    ' 逐列应用重复值和负数检测
+    Dim col As Range, colLetter As String
     For Each col In dataRange.Columns
-        Dim colAddress As String
-        colAddress = col.Address(False, False)  ' 相对引用格式
-        With col.FormatConditions.Add(xlExpression, , "=AND(RC<>"""",COUNTIF(" & colAddress & ",RC)>1)+N(0*LEN(""" & sessionTag & """))")
+        colLetter = Split(col.Cells(1, 1).Address, "$")(1)
+        
+        ' 重复值检测（绝对列，相对行）
+        With col.FormatConditions.Add(xlExpression, , "=AND($" & colLetter & "1<>"""",COUNTIF($" & colLetter & ":$" & colLetter & ",$" & colLetter & "1)>1)+N(0*LEN(""" & sessionTag & """))")
             .Interior.Color = RGB(255, 251, 235)  ' 浅黄色
+            .Priority = 3
             .StopIfTrue = False
         End With
+        LogCFRule col.Address & "|" & sessionTag & "|Duplicate|3"
+        
+        ' 负数检测（仅数值列）
+        If IsNumericColumn(col) Then
+            With col.FormatConditions.Add(xlExpression, , "=$" & colLetter & "1<0+N(0*LEN(""" & sessionTag & """))")
+                .Font.Color = RGB(220, 38, 38)  ' 红色字体
+                .Priority = 4
+                .StopIfTrue = False
+            End With
+            LogCFRule col.Address & "|" & sessionTag & "|Negative|4"
+        End If
     Next col
 End Sub
 ```
@@ -333,17 +347,17 @@ NegativeFormats = Array( _
 浅色系：
   - 主色：#FFFFFF (255,255,255)
   - 辅色：#F9FAFB (249,250,251)
-  - 透明度：100%
+  - 明度调整：TintAndShade = 0
   
 蓝色系：
   - 主色：#FFFFFF (255,255,255)
   - 辅色：#EFF6FF (239,246,255)
-  - 透明度：95%
+  - 明度调整：TintAndShade = 0.1 (稍微变亮)
   
 绿色系：
   - 主色：#FFFFFF (255,255,255)
   - 辅色：#F0FDF4 (240,253,244)
-  - 透明度：95%
+  - 明度调整：TintAndShade = 0.1 (稍微变亮)
 ```
 
 ### 2.5 字体美化功能
@@ -847,8 +861,10 @@ End Function
 
 **大表性能模式**：
 - **触发条件**：数据行数 > 10,000 或列数 > 50
-- **限制措施**：禁用渐变、只套用TableStyle、关闭复杂CF规则
+- **TableStyle优先**：大数据集使用内置TableStyle而非逐单元格格式化
+- **限制措施**：禁用渐变、优先套用TableStyle、简化CF规则
 - **批处理**：按行块处理，每块1000行
+- **内存优化**：使用TableStyle.BandedRows替代隔行变色手动实现
 
 - **重复值处理**：
   - 完全重复：深色标记
@@ -1105,177 +1121,6 @@ Private Sub EnableIntelligentMode()
 Private Sub OptimizeForLargeDataSets(rowCount As Long)
 Private Function ValidateIntelligentResult(result As BeautificationResult) As Boolean
 Private Sub LogIntelligentOperation(operation As IntelligentOperation)
-```
-
-### 3.2 v4.1专业用户界面设计
-
-#### 3.2.1 UserForm专业界面 ⭐ (替代InputBox)
-**界面布局设计**：
-```vba
-' UserForm: BeautifyForm
-' 尺寸: 380×280 像素
-' 风格: Office样式，与Excel界面一致
-
-' === 标题区域 ===
-lblTitle
-    Caption: "Excel表格专业美化工具"
-    Font: 微软雅黑, 14pt, Bold
-    ForeColor: #1E3A8A (深蓝色)
-    Position: 20, 15
-
-' === 主题选择区域 ===  
-frameTheme
-    Caption: "主题选择"
-    Position: 20, 50
-    Size: 330×80
-    
-    optBusiness
-        Caption: "● 商务经典 - 蓝色系专业配色"
-        Position: 15, 20
-        Font: 微软雅黑, 10pt
-        
-    optFinancial  
-        Caption: "○ 财务专用 - 绿色系，负数突出"
-        Position: 15, 40
-        
-    optMinimal
-        Caption: "○ 极简风格 - 黑白灰简约设计"  
-        Position: 15, 60
-
-' === 高级选项区域 ===
-frameOptions
-    Caption: "高级选项"
-    Position: 20, 140
-    Size: 330×80
-    
-    chkFreezeHeader
-        Caption: "☑ 冻结首行 (便于浏览大量数据)"
-        Position: 15, 20
-        Value: True  ' 默认选中
-        
-    chkZebraStripes
-        Caption: "☑ 隔行变色 (提高可读性)"
-        Position: 15, 40
-        Value: True
-        
-    chkSmartSummary
-        Caption: "☑ 智能识别汇总行 (自动特殊处理)"
-        Position: 15, 60  
-        Value: True
-
-' === 操作按钮区域 ===
-btnBeautify
-    Caption: "开始美化"
-    Position: 200, 235
-    Size: 80×25
-    Font: 微软雅黑, 10pt, Bold
-    BackColor: #1E3A8A (与标题颜色一致)
-    ForeColor: #FFFFFF
-    
-btnCancel
-    Caption: "取消"  
-    Position: 290, 235
-    Size: 60×25
-    Font: 微软雅黑, 10pt
-```
-
-**事件处理逻辑**：
-```vba
-Private Sub BeautifyForm_Initialize()
-    ' 设置默认选项
-    optBusiness.Value = True  ' 默认选择商务主题
-    chkFreezeHeader.Value = True
-    chkZebraStripes.Value = True  
-    chkSmartSummary.Value = True
-    
-    ' 显示主题说明
-    Call UpdateThemeDescription()
-End Sub
-
-Private Sub optBusiness_Click()
-    lblThemeDesc.Caption = "专业蓝色配色，适合商务报告和会议文档"
-End Sub
-
-Private Sub optFinancial_Click()
-    lblThemeDesc.Caption = "绿色系配色，负数红色突出，适合财务报表"
-End Sub
-
-Private Sub optMinimal_Click()
-    lblThemeDesc.Caption = "黑白灰简约设计，专注内容本身"
-End Sub
-
-Private Sub btnBeautify_Click()
-    ' 收集用户选项
-    Dim options As FormOptions
-    
-    If optBusiness.Value Then options.SelectedTheme = "Business"
-    If optFinancial.Value Then options.SelectedTheme = "Financial"  
-    If optMinimal.Value Then options.SelectedTheme = "Minimal"
-    
-    options.FreezeHeader = chkFreezeHeader.Value
-    options.ZebraStripes = chkZebraStripes.Value
-    options.SmartSummary = chkSmartSummary.Value
-    
-    ' 隐藏窗体并执行美化
-    Me.Hide
-    Call ExecuteBeautificationWithOptions(options)
-    
-    Unload Me
-End Sub
-
-Private Sub btnCancel_Click()
-    Unload Me
-End Sub
-```
-
-**界面交互优势**：
-- **防错设计**：只能点选，无法输入错误内容
-- **实时反馈**：选择主题时显示相应说明
-- **专业外观**：与Office界面风格一致
-- **扩展友好**：新增功能只需添加控件
-
-#### 3.2.2 新增撤销界面
-**撤销确认对话框**：
-```vba
-Private Sub ShowUndoConfirmation()
-    Dim result As VbMsgBoxResult
-    
-    result = MsgBox("确定要撤销美化效果吗？" & vbCrLf & vbCrLf & _
-                   "• 当前所有美化修改将丢失" & vbCrLf & _
-                   "• 数据将完全恢复到美化前状态" & vbCrLf & _
-                   "• 此操作不可逆转", _
-                   vbYesNo + vbQuestion + vbDefaultButton2, _
-                   "撤销美化效果")
-    
-    If result = vbYes Then
-        Call UndoBeautify()
-    End If
-End Sub
-```
-
-**操作结果反馈**：
-```vba
-Private Sub ShowOperationResult(success As Boolean, operationType As String)
-    If success Then
-        Select Case operationType
-            Case "Beautify"
-                MsgBox "✅ 表格美化完成！" & vbCrLf & vbCrLf & _
-                       "• 已应用专业美化样式" & vbCrLf & _
-                       "• 记录变更日志，可随时撤销" & vbCrLf & _
-                       "• 如需撤销，请运行 UndoBeautify()", _
-                       vbInformation, "美化成功"
-                       
-            Case "Undo"
-                MsgBox "✅ 美化效果已撤销！" & vbCrLf & vbCrLf & _
-                       "• 数据已完全恢复到美化前状态" & vbCrLf & _
-                       "• 变更日志已清理", _
-                       vbInformation, "撤销成功"
-        End Select
-    Else
-        MsgBox "❌ 操作失败，请检查表格格式或联系技术支持", _
-               vbCritical, "操作失败"
-    End If
-End Sub
 ```
 
 ### 3.3 与现有系统集成
@@ -1602,158 +1447,69 @@ End Sub
 
 ## 4. 操作流程设计
 
-### 4.1 智能美化流程
-```mermaid
-graph TD
-    A[启动智能美化] --> B[智能结构分析]
-    B --> C[语义理解]
-    C --> D[设计智能推荐]
-    D --> E[用户确认/调整]
-    E --> F[应用美化方案]
-    F --> G[生成质量报告]
-    G --> H[用户反馈学习]
-    H --> I[完成]
-    
-    B --> B1[检测表头结构]
-    B --> B2[识别数据类型]
-    B --> B3[分析表格规模]
-    
-    C --> C1[识别汇总行]
-    C --> C2[检测KPI列]
-    C --> C3[发现数据关系]
-    C --> C4[分析业务语义]
-    
-    D --> D1[生成配色方案]
-    D --> D2[构建字体层次]
-    D --> D3[推荐设计风格]
-    D --> D4[创建数据故事]
-    
-    G --> G1[质量评分]
-    G --> G2[专业建议]
-    G --> G3[优化推荐]
-```
-
-### 4.2 引导式向导流程
-```mermaid
-graph TD
-    A[用户点击智能向导] --> B[第1步: 结构分析]
-    B --> C{分析结果确认}
-    C -->|需要调整| B
-    C -->|确认| D[第2步: 风格定义]
-    D --> E[选择设计风格]
-    E --> F[品牌色输入]
-    F --> G[配色策略选择]
-    G --> H[第3步: 数据洞察]
-    H --> I[显示发现的模式]
-    I --> J[选择应用的洞察]
-    J --> K[第4步: 预览确认]
-    K --> L[显示前后对比]
-    L --> M{满意效果?}
-    M -->|需要微调| N[微调设置]
-    N --> L
-    M -->|满意| O[第5步: 应用与报告]
-    O --> P[应用美化]
-    P --> Q[生成报告]
-    Q --> R[显示质量检查]
-    R --> S[收集用户反馈]
-    S --> T[完成并学习]
-```
-
-### 4.3 智能批量美化流程
+### 4.1 简化美化流程
 ```vba
-Sub IntelligentBatchBeautifyProcess()
+' 直接调用模式 - 一键美化，无UI界面
+Sub BeautifyCurrentTable()
+    ' 检测当前选区或活动区域
+    Dim targetRange As Range
+    Set targetRange = GetCurrentTableRange()
+    
+    ' 应用默认Business主题
+    Call BeautifyTable(targetRange, "Business")
+    
+    ' 反馈操作结果
+    Debug.Print "表格美化完成，使用 UndoBeautify() 可撤销"
+End Sub
+
+' 参数化调用模式
+Sub BeautifyWithOptions(themeName As String, Optional freezeHeader As Boolean = True)
+    Dim targetRange As Range
+    Set targetRange = GetCurrentTableRange()
+    
+    Call BeautifyTable(targetRange, themeName, freezeHeader)
+End Sub
+```
+
+### 4.2 简化批量处理
+```vba
+Sub BatchBeautifyAllTables()
     Dim ws As Worksheet
-    Dim intelligentConfig As IntelligentConfig
     Dim results As Collection
-    Dim semantics As TableSemantics
     Set results = New Collection
     
-    ' 初始化智能进度显示
-    IntelligentProgressBar.Show
-    IntelligentProgressBar.Maximum = ThisWorkbook.Worksheets.Count
-    
-    ' 加载智能配置
-    intelligentConfig = LoadIntelligentConfig()
-    
-    ' 智能批量处理
+    ' 遍历所有工作表
     For Each ws In ThisWorkbook.Worksheets
         On Error Resume Next
         
-        ' 更新智能进度
-        IntelligentProgressBar.Value = IntelligentProgressBar.Value + 1
-        IntelligentProgressBar.Status = "智能分析: " & ws.Name
-        
-        ' 智能分析工作表
+        ' 处理有效表格
         If IsValidTable(ws) Then
-            ' 语义分析
-            Set semantics = AnalyzeTableSemantics(ws.UsedRange)
-            
-            ' 根据分析结果选择最佳策略
-            Dim optimalStyle As String
-            optimalStyle = RecommendOptimalStyle(semantics)
-            
-            ' 应用智能美化
-            ApplyIntelligentBeautification ws, intelligentConfig, optimalStyle
-            
-            ' 生成质量报告
-            Dim qualityScore As QualityScore
-            qualityScore = PerformQualityCheck(ws.UsedRange)
-            
-            results.Add CreateIntelligentResult(ws.Name, "成功", optimalStyle, qualityScore)
+            ' 应用美化
+            Call BeautifyTable(ws.UsedRange, "Business")
+            results.Add "工作表 '" & ws.Name & "' 美化完成"
         Else
-            results.Add CreateIntelligentResult(ws.Name, "跳过", "", Nothing)
+            results.Add "工作表 '" & ws.Name & "' 无有效表格，已跳过"
         End If
         
         On Error GoTo 0
     Next ws
     
-    ' 显示智能批量结果
-    ShowIntelligentBatchResults results
-    
-    ' 学习用户偏好
-    UpdatePersonalizationModel results
+    ' 输出处理结果
+    Dim result As Variant
+    For Each result In results
+        Debug.Print result
+    Next result
 End Sub
-
-' 智能样式推荐函数
-Private Function RecommendOptimalStyle(semantics As TableSemantics) As String
-    ' 基于语义分析推荐最佳样式
-    If semantics.BusinessDomain = "Financial" Then
-        RecommendOptimalStyle = "财务严谨"
-        Exit Function
-    ElseIf semantics.ComplexityLevel = "High" Then
-        RecommendOptimalStyle = "现代简约"  ' 复杂数据用简约风格
-        Exit Function
-    ElseIf semantics.KPIColumns.Count > 3 Then
-        RecommendOptimalStyle = "数据仪表盘"  ' 多KPI用仪表盘风格
-        Exit Function
-    Else
-        RecommendOptimalStyle = "现代简约"  ' 默认
-    End If
-End Function
 ```
 
 ## 5. 质量标准
 
-### 5.1 智能质量评估体系
-
-#### 5.1.1 综合质量评分标准
-| 评估维度 | 权重 | 评分标准 | 测量方法 |
-|---------|------|----------|----------|
-| 可访问性 | 25% | 色彩对比度、字体大小、结构清晰度 | WCAG 2.1 AA标准 |
-| 一致性 | 20% | 字体、颜色、间距的统一性 | 变异系数分析 |
-| 可读性 | 20% | 信息层次、视觉流、认知负荷 | 眼动跟踪算法 |
-| 专业度 | 15% | 设计规范遵循、商业标准匹配 | 设计规则检查 |
-| 数据洞察 | 10% | 数据故事表达、关键信息突出 | 语义分析评估 |
-| 美观度 | 10% | 视觉吸引力、现代感 | 美学算法评分 |
-
-#### 5.1.2 智能性能要求
-| 智能功能 | 响应时间要求 | 准确率要求 | 内存占用 |
-|---------|------------|-----------|----------|
-| 语义分析 | <2秒 | >95% | <100MB |
-| 配色生成 | <0.5秒 | >90% | <50MB |
-| 风格推荐 | <1秒 | >85% | <50MB |
-| 质量评估 | <3秒 | >95% | <100MB |
-| 个性化推荐 | <1秒 | >80% | <50MB |
+### 5.1 性能要求
+| 功能模块 | 响应时间要求 | 准确率要求 |
+|---------|------------|-----------|
+| 表头检测 | <1秒 | >95% |
+| 美化应用 | <2秒 | >98% |
+| 批量处理 | <5秒/表 | >95% |
 
 #### 5.1.3 智能优化策略
 ```vba
