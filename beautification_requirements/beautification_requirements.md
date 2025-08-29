@@ -1,102 +1,138 @@
-# Excel表格美化系统需求文档 v4.1
+# Excel表格快速美化系统 v4.2 (极简部署版)
 
 ## 1. 项目概述
 
 ### 1.1 项目背景
-基于现有的Excel智能布局优化系统，新增表格美化功能模块，专注于提升Excel表格的视觉效果和专业度。该系统将在保持原有布局优化能力的基础上，增加丰富的格式化和美化功能。
+专为快速部署设计的Excel表格美化系统，真正的单VBA模块实现，导入即用，无需额外配置。
 
-### 1.2 v4.1 重大升级
-**三大核心改进，实现专业级用户体验**：
+### 1.2 v4.2 极简升级
+**三大核心原则，极致简化部署**：
 
-#### 1.2.1 交互体验质变：UserForm专业界面 🎨
-- **告别InputBox粗糙体验**：采用专业UserForm图形界面
-- **防错设计**：点选操作杜绝用户输入错误
-- **扩展友好**：新功能可轻松添加到界面中
-- **专业美观**：瞬间提升工具的专业档次
+#### 1.2.1 真单模块架构：一文件部署 📁
+- **纯VBA实现**：仅一个.bas文件，无UserForm、无配置文件
+- **零依赖部署**：导入模块即可使用，无需额外安装
+- **即用设计**：运行一个函数即可完成美化
 
-#### 1.2.2 智能识别轻量化：关键词语义识别 🧠
-- **自动识别汇总行**：智能识别"合计"、"总计"等关键词
-- **上下文感知**：理解表格内容语义，不仅仅是格式结构
-- **特殊处理**：汇总行自动应用专业特殊样式
-- **轻量实现**：无需复杂AI，基于关键词匹配的简单高效方案
+#### 1.2.2 核心美化功能：专注本质 🎯
+- **表头美化**：自动识别并美化表头区域
+- **条件格式**：负数标红、重复标黄、空值标灰
+- **边框样式**：专业的表格边框和分割线
+- **逻辑撤销**：基于标签的精确撤销机制
 
-#### 1.2.3 智能撤销机制：逻辑撤销保障 🛡️
-- **变更日志记录**：记录所有新增样式名、条件格式规则地址和原始表格样式
-- **精确回滚撤销**：`UndoBeautify()`函数基于详细日志逐项还原，支持多表场景
-- **安全删除策略**：仅删除本次会话创建的样式，避免误删历史样式
-- **O(1)级性能**：秒级撤销，保持数据结构和外部引用完整
-- **用户信心保障**：用户可放心试验各种美化效果
+#### 1.2.3 快速交互：最少步骤 ⚡
+- **一键美化**：`BeautifyTable()`直接处理选中区域
+- **智能识别**：自动检测表格结构和数据类型
+- **即时撤销**：`UndoBeautify()`一键还原
 
 ### 1.3 设计目标
-- **快速部署**：单模块VBA实现，导入即用
-- **专业体验**：UserForm界面替代粗糙InputBox
-- **智能识别**：轻量级语义识别，自动处理特殊行
-- **安全可靠**：内置逻辑撤销机制，保障数据安全
-- **兼容性强**：与现有布局优化系统无缝集成
+- **极简部署**：单文件，零配置，导入即用
+- **快速执行**：一键完成，无复杂界面
+- **稳定可靠**：精确撤销，不影响原有数据
+- **性能优化**：针对大表格优化，避免卡顿
 
 ### 1.4 核心价值
-- 快速将普通表格转换为专业级报表
-- 提高工作效率，减少手动格式化时间（节省80%以上时间）
-- 确保表格风格统一，提升文档专业度
-- 支持单模块部署，适合个人和小团队使用
-- 提供专业级用户体验，媲美商业软件插件
+- 30秒完成部署和首次使用
+- 3秒完成表格专业美化
+- 节省95%的手动格式化时间
+- 零学习成本，导入即会用
 
-## 2. 功能需求详细说明
+## 2. 核心功能需求
 
 ### 2.1 表头美化功能
 
-#### 2.1.1 首行突出显示 ⭐ (用户需求)
-**功能描述**：自动识别表头行，应用突出的视觉效果
+#### 2.1.1 自动表头识别
+**功能描述**：自动识别表头行，应用专业美化效果
 
-**实现细节**：
-- **自动检测规则**：
-  - 首行非空单元格占比 > 60%
-  - 包含文本内容的单元格占比 > 70%
-  - 第二行开始出现数值型数据
-  - 支持多行表头检测（最多3行）
+**检测规则**：
+- 首行非空单元格占比 > 60%
+- 包含文本内容的单元格占比 > 70%
+- 自动检测1-2行表头
 
-- **渐变背景**（Excel兼容性限制）：
-  - ~~渐变类型：线性渐变、径向渐变~~
-  - **建议限制**：仅支持两段线性渐变（跨版本一致）
-  - **渐变方向**：水平（0°）、垂直（90°）为主
-  - **渐变步数**：限制为2个颜色节点（打印兼容）
-  - ~~透明度支持：0-100%~~：Excel打印一致性差
+**美化效果**：
+- **背景色**：商务蓝色渐变 (#1E3A8A → #3B82F6)
+- **字体**：加粗，白色字体
+- **边框**：底部粗边框，侧边细边框
 
-**简化渐变方案**：
 ```vba
-Sub ApplySimpleGradient(headerRange As Range, startColor As Long, endColor As Long)
-    ' 只用两色线性渐变，确保打印一致性
-    With headerRange.Interior
-        .Pattern = xlPatternLinearGradient
-        .Gradient.Degree = 90  ' 垂直渐变
-        .Gradient.ColorStops.Clear
-        .Gradient.ColorStops.Add(0).Color = startColor
-        .Gradient.ColorStops.Add(1).Color = endColor
+Sub ApplyHeaderBeautification(headerRange As Range)
+    With headerRange
+        .Interior.Color = RGB(30, 58, 138)  ' 商务蓝
+        .Font.Bold = True
+        .Font.Color = RGB(255, 255, 255)    ' 白色字体
+        .Borders(xlEdgeBottom).Weight = xlThick
     End With
 End Sub
 ```
 
-- **预设主题详细参数**：
-  - 蓝色商务：
-    - 起始色：#1E3A8A (RGB: 30,58,138)
-    - 结束色：#3B82F6 (RGB: 59,130,246)
-    - 字体色：#FFFFFF
-    - 边框色：#1E40AF
-  - 绿色清新：
-    - 起始色：#065F46 (RGB: 6,95,70)
-    - 结束色：#10B981 (RGB: 16,185,129)
-    - 字体色：#FFFFFF
-    - 边框色：#047857
-  - 灰色专业：
-    - 起始色：#374151 (RGB: 55,65,81)
-    - 结束色：#9CA3AF (RGB: 156,163,175)
-    - 字体色：#FFFFFF
-    - 边框色：#4B5563
-  - 紫色优雅：
-    - 起始色：#581C87 (RGB: 88,28,135)
-    - 结束色：#A855F7 (RGB: 168,85,247)
-    - 字体色：#FFFFFF
-    - 边框色：#6B21A8
+### 2.2 条件格式智能应用
+
+#### 2.2.1 标准条件格式规则
+**功能描述**：应用最常用的条件格式规则
+
+**内置规则（A1引用格式）**：
+1. **负数标红**：`=A1<0` - 红色字体突出负数
+2. **重复值标黄**：`=COUNTIF(A:A,A1)>1` - 黄色背景标记重复
+3. **空值标灰**：`=ISBLANK(A1)` - 灰色背景提醒空值
+4. **错误标红**：`=ISERROR(A1)` - 红色背景标记错误
+
+**应用策略**：
+```vba
+Sub ApplyStandardConditionalFormat(dataRange As Range)
+    Dim sessionTag As String
+    sessionTag = "ELO_" & Format(Now, "yyyymmddhhmmss")
+    
+    ' 负数标红
+    With dataRange.FormatConditions.Add(xlExpression, , "=(A1<0)+N(0*LEN(""" & sessionTag & """))")
+        .Font.Color = RGB(220, 38, 38)
+        .StopIfTrue = False
+    End With
+    
+    ' 重复值标黄（逐列应用）
+    Dim col As Range
+    For Each col In dataRange.Columns
+        Dim colLetter As String
+        colLetter = Split(col.Cells(1, 1).Address, "$")(1)
+        With col.FormatConditions.Add(xlExpression, , "=COUNTIF(" & colLetter & ":" & colLetter & ",A1)>1+N(0*LEN(""" & sessionTag & """))")
+            .Interior.Color = RGB(255, 251, 235)
+        End With
+    Next col
+End Sub
+```
+
+### 2.3 表格边框和样式
+
+#### 2.3.1 专业边框设置
+**功能描述**：应用统一的专业边框样式
+
+**边框规范**：
+- **外边框**：粗线（xlThick）
+- **内边框**：细线（xlThin）
+- **表头分割**：底部双线
+- **颜色**：深灰色 (#4B5563)
+
+```vba
+Sub ApplyProfessionalBorders(tableRange As Range)
+    With tableRange.Borders
+        .LineStyle = xlContinuous
+        .Weight = xlThin
+        .Color = RGB(75, 85, 99)
+    End With
+    
+    ' 外边框加粗
+    With tableRange.Borders(xlEdgeLeft)
+        .Weight = xlThick
+    End With
+    With tableRange.Borders(xlEdgeRight)
+        .Weight = xlThick
+    End With
+    With tableRange.Borders(xlEdgeTop)
+        .Weight = xlThick
+    End With
+    With tableRange.Borders(xlEdgeBottom)
+        .Weight = xlThick
+    End With
+End Sub
+```
 
 - **字体优化详细参数**：
   - 字体加粗：Bold (700)
@@ -307,156 +343,141 @@ End Function
 - 最大限制：12pt
 - 最小限制：8pt
 
-### 2.6 v4.1 核心新功能
+### 2.4 核心主函数
 
-#### 2.6.1 UserForm专业界面 ⭐ (重大升级)
-**功能描述**：用专业的UserForm界面替代粗糙的InputBox交互
+#### 2.4.1 一键美化主函数
+**功能描述**：单函数完成所有美化操作
 
-**界面设计规范**：
 ```vba
-' UserForm控件布局
-BeautifyForm.UserForm
-├── lblTitle: "Excel表格专业美化工具"
-├── frameTheme: "主题选择"
-│   ├── optBusiness: "● 商务经典"
-│   ├── optFinancial: "○ 财务专用"  
-│   └── optMinimal: "○ 极简风格"
-├── frameOptions: "高级选项"
-│   ├── chkFreezeHeader: "☑ 冻结首行"
-│   ├── chkZebraStripes: "☑ 隔行变色"
-│   └── chkSmartSummary: "☑ 智能识别汇总行"
-└── frameButtons: "操作按钮"
-    ├── btnBeautify: "开始美化"
-    └── btnCancel: "取消"
+Sub BeautifyTable()
+    Dim targetRange As Range
+    Dim headerRange As Range
+    Dim dataRange As Range
+    
+    ' 保存原始应用状态
+    Dim originalScreenUpdating As Boolean
+    Dim originalCalculation As XlCalculation
+    originalScreenUpdating = Application.ScreenUpdating
+    originalCalculation = Application.Calculation
+    
+    On Error GoTo ErrorHandler
+    
+    ' 设置性能模式
+    Application.ScreenUpdating = False
+    Application.Calculation = xlCalculationManual
+    
+    ' 1. 智能检测表格区域
+    Set targetRange = DetectTableRange()
+    If targetRange Is Nothing Then
+        MsgBox "未检测到有效表格区域，请选择数据区域后再试。", vbExclamation
+        Exit Sub
+    End If
+    
+    ' 2. 验证操作
+    If Not ValidateBeautifyOperation(targetRange) Then
+        Exit Sub
+    End If
+    
+    ' 3. 初始化撤销日志
+    Call InitializeBeautifyLog()
+    
+    ' 4. 检测表头区域
+    Set headerRange = DetectHeaderRange(targetRange)
+    Set dataRange = targetRange.Offset(headerRange.Rows.Count, 0).Resize(targetRange.Rows.Count - headerRange.Rows.Count, targetRange.Columns.Count)
+    
+    ' 5. 应用美化
+    If Not headerRange Is Nothing Then
+        Call ApplyHeaderBeautification(headerRange)
+    End If
+    Call ApplyStandardConditionalFormat(dataRange)
+    Call ApplyProfessionalBorders(targetRange)
+    
+    ' 6. 恢复应用状态
+    Application.ScreenUpdating = originalScreenUpdating
+    Application.Calculation = originalCalculation
+    
+    MsgBox "表格美化完成！如需撤销，请运行 UndoBeautify()", vbInformation
+    Exit Sub
+    
+ErrorHandler:
+    ' 错误时恢复应用状态
+    Application.ScreenUpdating = originalScreenUpdating
+    Application.Calculation = originalCalculation
+    MsgBox "美化过程中出现错误：" & Err.Description, vbCritical
+End Sub
 ```
 
-**交互逻辑**：
-- **防错设计**：只能通过OptionButton选择主题，杜绝输入错误
-- **实时反馈**：选择主题时显示对应的配色说明
-- **选项控制**：CheckBox控制各项高级功能的开关
-- **专业外观**：统一的控件样式和配色方案
+#### 2.4.2 智能表格检测
+**功能描述**：自动检测当前选择或活动区域的表格
 
-**实现优势**：
-- **专业感**：瞬间提升工具的档次，像商业插件
-- **易用性**：直观的点选操作，用户友好
-- **扩展性**：新增主题或功能只需添加控件
-- **一致性**：界面风格与Office套件保持一致
-
-#### 2.6.2 智能语义识别 ⭐ (重大升级)
-**功能描述**：基于关键词的轻量级表格语义识别
-
-**关键词库设计**：
 ```vba
-' 汇总行识别关键词（中英文）
-Private summaryKeywords As String
-summaryKeywords = "合计,总计,小计,平均,汇总,统计,总和," & _
-                 "Total,Sum,Average,Subtotal,Summary,Grand Total"
-
-' 标题行识别关键词  
-Private titleKeywords As String
-titleKeywords = "标题,题目,主题,Title,Subject,Heading"
-```
-
-**识别算法**：
-```vba
-Function DetectSummaryRows(tableRange As Range) As Collection
-    Dim summaryRows As New Collection
-    Dim lastRow As Long
-    lastRow = tableRange.Rows.Count
+Function DetectTableRange() As Range
+    ' 优先使用选中区域
+    If Not Selection Is Nothing And TypeName(Selection) = "Range" Then
+        If Selection.Cells.Count > 1 Then
+            Set DetectTableRange = Selection
+            Exit Function
+        End If
+    End If
     
-    ' 从底部向上扫描（汇总行通常在底部）
-    For i = lastRow To Int(lastRow * 0.8) Step -1
-        For j = 1 To tableRange.Columns.Count
-            Dim cellValue As String
-            cellValue = tableRange.Cells(i, j).Value
-            
-            ' 检查是否包含汇总关键词
-            If ContainsKeyword(cellValue, summaryKeywords) Then
-                summaryRows.Add i
-                Exit For
-            End If
-        Next j
-    Next i
+    ' 使用当前区域（避免UsedRange的脏扩展）
+    Set DetectTableRange = ActiveCell.CurrentRegion
     
-    Set DetectSummaryRows = summaryRows
+    ' 验证区域有效性
+    If DetectTableRange.Cells.Count < 4 Then
+        Set DetectTableRange = Nothing
+    End If
+End Function
+
+Function DetectHeaderRange(tableRange As Range) As Range
+    ' 简单检测：首行作为表头
+    Set DetectHeaderRange = tableRange.Rows(1)
 End Function
 ```
 
-**智能处理策略**：
-- **汇总行特殊样式**：顶部双线边框、字体加粗、背景变色
-- **小计行处理**：虚线分隔、字体加粗
-- **标题行增强**：底部粗边框、字体放大
-- **异常值提醒**：识别"异常"、"错误"等关键词并标红
+### 2.5 逻辑撤销机制
 
-**上下文感知价值**：
-- **自动化**：将手动识别的工作交给程序完成
-- **准确性**：基于业务常识的关键词匹配
-- **适应性**：可根据行业特点扩展关键词库
-- **专业性**：体现对表格业务逻辑的理解
+#### 2.5.1 精确撤销实现
+**功能描述**：基于标签的精确撤销，避免误删用户原有格式
 
-#### 2.6.3 智能撤销机制 ⭐ (逻辑撤销，避免复制工作表)
-**功能描述**：基于样式和条件格式的逻辑撤销，避免命名区域、图表缓存、外部引用被破坏
-
-**变更日志机制**：
+**变更日志结构**：
 ```vba
-' 全局变更记录结构
+' 全局变更记录
 Type BeautifyLog
-    StylesAdded As String          ' 新增样式名列表，分号分隔
-    CFRulesAdded As String         ' 新增CF规则地址列表，分号分隔
-    TableStylesMap As String       ' 表格原始样式映射，格式: "SheetName.TableName:StyleName;"
-    OriginalCellStyles As String   ' 原始单元格样式映射
+    CFRulesAdded As String         ' 条件格式规则记录，格式: "地址|标签;"
+    SessionId As String            ' 会话ID，确保只撤销本次操作
     Timestamp As Date              ' 操作时间
-    SessionId As String            ' 会话ID，用于区分不同美化会话
 End Type
 
 Dim g_BeautifyHistory As BeautifyLog
 
 Sub InitializeBeautifyLog()
-    ' 清空历史记录
-    g_BeautifyHistory.StylesAdded = ""
     g_BeautifyHistory.CFRulesAdded = ""
-    g_BeautifyHistory.TableStylesMap = ""
     g_BeautifyHistory.SessionId = Format(Now, "yyyymmddhhmmss") & "_" & Int(Rnd * 1000)
     g_BeautifyHistory.Timestamp = Now
 End Sub
 
-Sub LogStyleChange(styleName As String)
-    If g_BeautifyHistory.StylesAdded = "" Then
-        g_BeautifyHistory.StylesAdded = styleName
-    Else
-        g_BeautifyHistory.StylesAdded = g_BeautifyHistory.StylesAdded & ";" & styleName
-    End If
-End Sub
-
-Sub LogCFRule(ruleAddress As String)
+Sub LogCFRule(ruleInfo As String)
     If g_BeautifyHistory.CFRulesAdded = "" Then
-        g_BeautifyHistory.CFRulesAdded = ruleAddress
+        g_BeautifyHistory.CFRulesAdded = ruleInfo
     Else
-        g_BeautifyHistory.CFRulesAdded = g_BeautifyHistory.CFRulesAdded & ";" & ruleAddress
-    End If
-End Sub
-
-Sub LogTableStyle(sheetName As String, tableName As String, originalStyle As String)
-    Dim mapping As String
-    mapping = sheetName & "." & tableName & ":" & originalStyle
-    If g_BeautifyHistory.TableStylesMap = "" Then
-        g_BeautifyHistory.TableStylesMap = mapping
-    Else
-        g_BeautifyHistory.TableStylesMap = g_BeautifyHistory.TableStylesMap & ";" & mapping
+        g_BeautifyHistory.CFRulesAdded = g_BeautifyHistory.CFRulesAdded & ";" & ruleInfo
     End If
 End Sub
 ```
 
-**逻辑撤销机制**：
+**逻辑撤销机制（精确标签删除）**：
 ```vba
 Sub UndoBeautify()
     Dim ws As Worksheet
     Dim styleNames() As String
-    Dim cfRuleAddresses() As String
+    Dim cfRuleEntries() As String
     Dim tableStyleMappings() As String
     Dim i As Long, j As Long
+    Dim sessionTag As String
     
     Set ws = ActiveSheet
+    sessionTag = "ELO_" & g_BeautifyHistory.SessionId
     
     ' 确认撤销操作
     If MsgBox("确定要撤销美化效果吗？", vbYesNo + vbQuestion) = vbNo Then
@@ -465,14 +486,22 @@ Sub UndoBeautify()
     
     Application.ScreenUpdating = False
     
-    ' 1. 删除记录的条件格式规则（按地址精确删除）
+    ' 1. 精确删除带标签的条件格式规则
     If g_BeautifyHistory.CFRulesAdded <> "" Then
-        cfRuleAddresses = Split(g_BeautifyHistory.CFRulesAdded, ";")
-        For i = 0 To UBound(cfRuleAddresses)
-            On Error Resume Next
-            ' 使用地址精确删除，而非依赖Formula1判断
-            Range(cfRuleAddresses(i)).FormatConditions.Delete
-            On Error GoTo 0
+        cfRuleEntries = Split(g_BeautifyHistory.CFRulesAdded, ";")
+        For i = 0 To UBound(cfRuleEntries)
+            Dim parts() As String
+            parts = Split(cfRuleEntries(i), "|")
+            If UBound(parts) = 1 Then  ' 地址|标签格式
+                Dim targetRange As Range
+                Set targetRange = Range(parts(0))
+                ' 遍历该区域的条件格式，只删除包含我们标签的规则
+                For j = targetRange.FormatConditions.Count To 1 Step -1
+                    If InStr(targetRange.FormatConditions(j).Formula1, parts(1)) > 0 Then
+                        targetRange.FormatConditions(j).Delete
+                    End If
+                Next j
+            End If
         Next i
     End If
     
@@ -480,17 +509,19 @@ Sub UndoBeautify()
     If g_BeautifyHistory.TableStylesMap <> "" Then
         tableStyleMappings = Split(g_BeautifyHistory.TableStylesMap, ";")
         For i = 0 To UBound(tableStyleMappings)
-            Dim parts() As String
-            parts = Split(tableStyleMappings(i), ":")
-            If UBound(parts) = 1 Then
+            Dim styleParts() As String
+            styleParts = Split(tableStyleMappings(i), ":")
+            If UBound(styleParts) = 1 Then
                 Dim tableInfo() As String
-                tableInfo = Split(parts(0), ".")
+                tableInfo = Split(styleParts(0), ".")
                 If UBound(tableInfo) = 1 Then
+                    On Error Resume Next
                     Dim targetSheet As Worksheet
                     Set targetSheet = ThisWorkbook.Worksheets(tableInfo(0))
                     Dim targetTable As ListObject
                     Set targetTable = targetSheet.ListObjects(tableInfo(1))
-                    targetTable.TableStyle = parts(1)
+                    targetTable.TableStyle = styleParts(1)
+                    On Error GoTo 0
                 End If
             End If
         Next i
@@ -502,7 +533,7 @@ Sub UndoBeautify()
         For i = 0 To UBound(styleNames)
             On Error Resume Next
             ' 确保只删除本次会话创建的样式
-            If InStr(styleNames(i), g_BeautifyHistory.SessionId) > 0 Then
+            If InStr(styleNames(i), sessionTag) > 0 Then
                 ThisWorkbook.Styles(styleNames(i)).Delete
             End If
             On Error GoTo 0
@@ -511,7 +542,7 @@ Sub UndoBeautify()
     
     ' 4. 移除本次会话创建的自定义表格样式（安全删除）
     For i = ActiveWorkbook.TableStyles.Count To 1 Step -1
-        If InStr(ActiveWorkbook.TableStyles(i).Name, "ELO_" & g_BeautifyHistory.SessionId) > 0 Then
+        If InStr(ActiveWorkbook.TableStyles(i).Name, sessionTag) > 0 Then
             ActiveWorkbook.TableStyles(i).Delete
         End If
     Next i
@@ -527,23 +558,23 @@ End Sub
 
 **智能错误处理**：
 ```vba
-Sub ValidateBeautifyOperation(targetRange As Range) As Boolean
+Function ValidateBeautifyOperation(targetRange As Range) As Boolean
     ' 预检查，确保操作安全性
     If targetRange Is Nothing Then
         MsgBox "请选择有效的数据区域", vbExclamation
         ValidateBeautifyOperation = False
-        Exit Sub
+        Exit Function
     End If
     
     If targetRange.Cells.Count > 100000 Then
         If MsgBox("数据量较大，美化可能需要较长时间，是否继续？", vbYesNo) = vbNo Then
             ValidateBeautifyOperation = False
-            Exit Sub
+            Exit Function
         End If
     End If
     
     ValidateBeautifyOperation = True
-End Sub
+End Function
 ```
 
 ### 2.7 简化美化功能
@@ -589,44 +620,113 @@ End Sub
 - **应用范围**：仅对数据区域一次性应用
 - **分层顺序**：错误→空值→重复→阈值→文本/日期
 
-**优化的规则优先级**：
-1. **错误值检测** - 公式：`=ISERROR(RC)`
-2. **空值标记** - 公式：`=ISBLANK(RC)`  
-3. **重复值检测** - 按列应用：`=COUNTIF(C,RC)>1`（注意：按列应用，不固定范围）
-4. **数值阈值** - 逐列判定：`=RC<0` (负数检测，仅应用于数值列)
-5. **文本匹配** - 公式：`=ISNUMBER(SEARCH("错误",RC))` (关键词检测)
+**优化的规则优先级（A1引用规范）**：
+1. **错误值检测** - 公式：`=ISERROR(A1)`
+2. **空值标记** - 公式：`=ISBLANK(A1)`  
+3. **重复值检测** - 逐列应用：`=COUNTIF(A:A,A1)>1`（动态调整列引用）
+4. **数值阈值** - 逐列判定：`=A1<0` (负数检测，仅应用于数值列)
+5. **文本匹配** - 公式：`=ISNUMBER(SEARCH("错误",A1))` (关键词检测)
 
-**逐列应用策略**：
+## 3. 性能和安全优化
+
+### 3.1 性能优化策略
+
+#### 3.1.1 智能区域检测
+**避免UsedRange脏扩展问题**：
 ```vba
-Sub ApplyOptimizedConditionalFormat(dataRange As Range)
-    Dim col As Range
-    Dim colLetter As String
+Function GetSmartDataRange() As Range
+    Dim ws As Worksheet
+    Set ws = ActiveSheet
     
-    Application.ScreenUpdating = False
-    Application.Calculation = xlCalculationManual
-    Application.EnableEvents = False
-    
-    ' 清除现有条件格式
-    dataRange.FormatConditions.Delete
-    
-    ' 1. 错误值检测（应用到整个数据区域）
-    With dataRange.FormatConditions.Add(xlExpression, , "=ISERROR(RC)")
-        .Interior.Color = RGB(254, 226, 226)  ' 浅红色
-        .StopIfTrue = True
-    End With
-    
-    ' 2. 空值检测（应用到整个数据区域）
-    With dataRange.FormatConditions.Add(xlExpression, , "=ISBLANK(RC)")
-        .Interior.Color = RGB(243, 244, 246)  ' 浅灰色
-        .StopIfTrue = False
-    End With
-    
-    ' 3. 逐列应用重复值检测和负数检测
-    For Each col In dataRange.Columns
-        colLetter = Split(col.Cells(1, 1).Address, "$")(1)
+    ' 优先使用当前区域，避免UsedRange的脏扩展
+    If Not Selection Is Nothing Then
+        Set GetSmartDataRange = Selection.CurrentRegion
+    Else
+        ' 从A1开始寻找实际数据边界
+        Dim lastRow As Long, lastCol As Long
+        lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+        lastCol = ws.Cells(1, ws.Columns.Count).End(xlToLeft).Column
         
-        ' 重复值检测（按当前列）
-        With col.FormatConditions.Add(xlExpression, , "=COUNTIF(C,RC)>1")
+        ' 验证边界的合理性
+        If lastRow > 1 And lastCol > 1 And lastRow < 1000000 And lastCol < 16384 Then
+            Set GetSmartDataRange = ws.Range(ws.Cells(1, 1), ws.Cells(lastRow, lastCol))
+        Else
+            Set GetSmartDataRange = ws.Range("A1:J20")  ' 安全默认值
+        End If
+    End If
+End Function
+```
+
+#### 3.1.2 应用状态保护
+**安全的状态管理**：
+```vba
+Type AppState
+    ScreenUpdating As Boolean
+    Calculation As XlCalculation
+    EnableEvents As Boolean
+    DisplayAlerts As Boolean
+End Type
+
+Function SaveAppState() As AppState
+    Dim state As AppState
+    With Application
+        state.ScreenUpdating = .ScreenUpdating
+        state.Calculation = .Calculation
+        state.EnableEvents = .EnableEvents
+        state.DisplayAlerts = .DisplayAlerts
+    End With
+    SaveAppState = state
+End Function
+
+Sub RestoreAppState(state As AppState)
+    With Application
+        .ScreenUpdating = state.ScreenUpdating
+        .Calculation = state.Calculation
+        .EnableEvents = state.EnableEvents
+        .DisplayAlerts = state.DisplayAlerts
+    End With
+End Sub
+
+Sub SetPerformanceMode()
+    With Application
+        .ScreenUpdating = False
+        .Calculation = xlCalculationManual
+        .EnableEvents = False
+        .DisplayAlerts = False
+    End With
+End Sub
+```
+
+### 3.2 安全错误处理
+
+#### 3.2.1 统一错误处理框架
+```vba
+Function SafeExecute(targetRange As Range) As Boolean
+    Dim originalState As AppState
+    originalState = SaveAppState()
+    
+    On Error GoTo ErrorHandler
+    
+    ' 设置性能模式
+    SetPerformanceMode
+    
+    ' 执行美化操作
+    Call ApplyHeaderBeautification(targetRange.Rows(1))
+    Call ApplyStandardConditionalFormat(targetRange)
+    Call ApplyProfessionalBorders(targetRange)
+    
+    ' 恢复状态
+    RestoreAppState originalState
+    SafeExecute = True
+    Exit Function
+    
+ErrorHandler:
+    ' 错误时强制恢复状态
+    RestoreAppState originalState
+    MsgBox "操作失败：" & Err.Description & vbCrLf & "已恢复原始设置。", vbCritical
+    SafeExecute = False
+End Function
+```
             .Interior.Color = RGB(255, 251, 235)  ' 浅黄色
             .StopIfTrue = False
         End With
@@ -792,61 +892,49 @@ End Sub
 
 ## 3. 技术实现规范
 
-### 3.1 v4.1增强单模块VBA架构
+## 4. 极简API接口设计
 
-#### 3.1.1 增强模块结构设计
+### 4.1 核心公共函数（仅2个）
+
 ```vba
-' ===== v4.1新增核心功能 =====
-Public Sub BeautifyTable()                   ' UserForm界面美化入口
-Public Sub ShowBeautifyForm()               ' 显示专业UserForm界面
+' ===== 极简核心功能 =====
+Public Sub BeautifyTable()                  ' 一键美化表格（主函数）
 Public Sub UndoBeautify()                   ' 一键撤销美化效果
 
-' ===== UserForm界面处理 =====
-Private Sub BeautifyForm_Initialize()       ' 初始化UserForm界面
-Private Sub optTheme_Click()                ' 主题选择事件处理
-Private Sub btnBeautify_Click()             ' 开始美化按钮事件
-Private Sub btnCancel_Click()               ' 取消按钮事件
-
-' ===== 智能语义识别 =====
-Private Function DetectSummaryRows(tableRange As Range) As Collection
-Private Function ContainsKeyword(text As String, keywords As String) As Boolean
-Private Sub ApplySummaryRowStyle(rowRange As Range, themeConfig As ThemeConfig)
-Private Function AnalyzeTableContent(tableRange As Range) As ContentAnalysis
-
-' ===== 逻辑撤销机制 =====
-Private Sub InitializeBeautifyLog()         ' 初始化变更日志
-Private Sub LogStyleChange(styleName As String)  ' 记录样式变更
-Private Sub LogCFRule(ruleAddress As String)     ' 记录CF规则
-Private Sub LogTableStyle(sheetName As String, tableName As String, originalStyle As String)  ' 记录表格样式
-
-' ===== 传统美化功能（保持兼容） =====
-' 表头美化
-Private Sub ApplyHeaderBeautification(headerRange As Range)
-Private Function DetectHeaderRows() As Integer
-Private Sub ApplyGradientFill(range As Range, startColor As Long, endColor As Long)
-
-' 边框设置
-Private Sub SetTableBorders(tableRange As Range)
-Private Sub ApplyBorderStyle(range As Range, borderWeight As XlBorderWeight)
-
-' 条件格式
-Private Sub ApplyBasicConditionalFormat(dataRange As Range)
-Private Sub HighlightNegativeNumbers(range As Range)
-Private Sub MarkDuplicateValues(range As Range)
-Private Sub HighlightEmptyCells(range As Range)
-
-' 字体和颜色
-Private Sub StandardizeFonts(tableRange As Range)
-Private Sub ApplyThemeColors(range As Range, themeConfig As ThemeConfig)
-
-' ===== 辅助工具函数 =====
-' 表格检测
+' ===== 内部实现函数 =====
 Private Function DetectTableRange() As Range
-Private Function IsHeaderRow(rowIndex As Integer) As Boolean
-Private Function GetDataRange() As Range
+Private Function DetectHeaderRange(tableRange As Range) As Range
+Private Function ValidateBeautifyOperation(targetRange As Range) As Boolean
+Private Function SaveAppState() As AppState
+Private Sub RestoreAppState(state As AppState)
+Private Sub SetPerformanceMode()
+Private Function SafeExecute(targetRange As Range) As Boolean
 
-' 主题配置
-Private Function GetBusinessTheme() As ThemeConfig
+Private Sub ApplyHeaderBeautification(headerRange As Range)
+Private Sub ApplyStandardConditionalFormat(dataRange As Range)
+Private Sub ApplyProfessionalBorders(tableRange As Range)
+
+Private Sub InitializeBeautifyLog()
+Private Sub LogCFRule(ruleInfo As String)
+```
+
+### 4.2 使用方法（超简单）
+
+#### 4.2.1 基本使用
+1. **导入模块**：将.bas文件导入Excel VBA
+2. **选择表格**：选中要美化的表格区域（可选，会自动检测）
+3. **运行美化**：按Alt+F11，运行`BeautifyTable()`
+4. **撤销美化**：如需撤销，运行`UndoBeautify()`
+
+#### 4.2.2 快捷键设置（可选）
+```vba
+' 在个人宏工作簿中添加快捷键
+Sub Auto_Open()
+    Application.MacroOptions Macro:="BeautifyTable", _
+                             Description:="一键美化表格", _
+                             Shortcut:="B"  ' Ctrl+Shift+B
+End Sub
+```
 Private Function GetFinancialTheme() As ThemeConfig
 Private Function GetMinimalTheme() As ThemeConfig
 
@@ -1686,9 +1774,7 @@ End Function
 - **链接保护**：不破坏外部链接
 - **图表保护**：不影响关联图表
 
-## 6. 用户体验设计
-
-### 6.1 易用性原则
+### 5.2 核心价值总结
 
 #### 6.1.1 智能默认值
 ```vba
@@ -1956,36 +2042,20 @@ ExcelLayoutOptimizer_v4.1/
 - ✅ 逻辑撤销机制（样式移除，非工作表复制）
 - ✅ 性能模式（大表优化）
 
-#### 8.1.2 自动更新机制
-```vba
-Private Sub CheckForUpdates()
-    Dim currentVersion As String
-    Dim latestVersion As String
-    
-    currentVersion = GetCurrentVersion()
-    latestVersion = GetLatestVersionFromServer()
-    
-    If CompareVersions(latestVersion, currentVersion) > 0 Then
-        If MsgBox("发现新版本，是否更新？", vbYesNo) = vbYes Then
-            DownloadAndInstallUpdate latestVersion
-        End If
-    End If
-End Sub
-```
+## 5. 部署和使用指南
 
-### 8.2 维护计划
+### 5.1 极简部署方案
 
-#### 8.2.1 版本发布周期
-- **主版本**：每6个月
-- **功能更新**：每2个月
-- **错误修复**：每2周
-- **紧急修复**：24小时内
+#### 5.1.1 30秒部署流程
+1. **下载文件**：获取 `ExcelTableBeautifier.bas` 文件
+2. **导入模块**：在Excel中按Alt+F11，右键插入模块，导入.bas文件
+3. **立即使用**：选择表格，运行`BeautifyTable()`
 
-#### 8.2.2 用户反馈机制
-- 内置反馈按钮
-- 错误自动上报
-- 使用统计收集
-- 用户满意度调查
+#### 5.1.2 安全说明
+- **无网络访问**：纯本地运行，不连接外部服务器
+- **不自动更新**：避免企业环境安全风险
+- **纯VBA代码**：用户可完全查看和审核代码
+- **无注册表修改**：不影响系统设置
 
 ## 9. 附录
 
@@ -2075,36 +2145,26 @@ End Sub
 **效率革命**：
 - 传统美化：2-3小时手动调整
 - 智能美化：2-3分钟完成专业级效果
-- 效率提升：**95%时间节省**
+### 5.2 核心价值总结
 
-**质量保证**：
-- 自动遵循设计规范，避免常见错误
-- 内置可访问性检查，确保合规性
-- 智能质量评分，量化专业度
+**极简高效**：
+- 30秒完成部署
+- 3秒完成美化
+- 效率提升：95%时间节省
 
-**个性化体验**：
-- 每个用户都拥有独特的设计助手
-- 系统记住偏好，越用越贴心
-- 支持企业品牌规范的自动应用
+**稳定可靠**：
+- 精确撤销机制，不误删用户原有格式
+- 错误恢复保护，确保Excel状态安全
+- 纯本地运行，无安全风险
 
-### 10.4 技术创新亮点
-
-**突破性算法**：
-- 表格语义分析引擎
-- 色彩和谐度计算算法
-- 视觉层次优化算法
-- 数据故事自动生成
-
-**架构创新**：
-- 插件式智能模块设计
-- 云端学习模型支持
-- 渐进式功能加载
-- 向后兼容性保证
+**专业实用**：
+- 商务级美化效果
+- 适配各种表格场景
+- 零学习成本
 
 ---
 
-**文档版本**：v3.0 (智能设计系统版)  
+**文档版本**：v4.2 (极简部署版)  
 **创建日期**：2024年12月29日  
-**重大升级**：2025年8月29日  
-**作者**：Excel智能美化系统开发团队  
-**技术顾问**：设计智能研究院
+**极简重构**：2025年8月29日  
+**设计理念**：部署即用，专注核心价值
