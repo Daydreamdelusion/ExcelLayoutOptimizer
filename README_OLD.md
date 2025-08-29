@@ -80,7 +80,7 @@
 └── 🎚️ 行高自适应调整
 ```
 
-## 🚀 快速开始
+## � 快速开始
 
 ### 方式一：智能向导（推荐新用户）
 ```vba
@@ -182,192 +182,214 @@ ExcelLayoutOptimizer/
 - **操作系统**：Windows 7+ / macOS 10.12+
 - **内存要求**：4GB+ (大数据集需要8GB+)
 - **VBA支持**：需要启用宏
+' 诊断行高问题
+DiagnoseRowHeightIssue
 
-## 🎓 进阶功能
+' 重置异常行高
+ResetRowHeightToNormal
 
-### 🎨 自定义设计风格
-```vba
-' 创建个人专属设计风格
-Dim customStyle As DesignStyle
-customStyle.StyleName = "我的企业风格"
-customStyle.ColorPalette = GenerateColorPalette(RGB(255, 102, 0), "Complementary")
-customStyle.Typography = BuildTypographyHierarchy("Arial")
-SaveCustomDesignStyle customStyle
+' 重置整个工作表行高
+ResetAllRowHeights
 ```
 
-### 🧠 个性化学习系统
-```vba
-' 启用个性化学习（系统会记住您的选择偏好）
-EnablePersonalizationLearning True
-
-' 查看个性化建议
-ShowPersonalizedRecommendations
-
-' 导出/导入个性化设置
-ExportPersonalSettings "C:\MyExcelStyles.config"
-ImportPersonalSettings "C:\MyExcelStyles.config"
+### 快捷键操作
+```
+Ctrl + Shift + L    启动布局优化（含预览）
+Ctrl + Shift + Q    快速优化（跳过预览）
+Ctrl + Shift + H    显示系统信息
+Ctrl + Z           撤销上次优化
 ```
 
-### 📊 批量智能处理
-```vba
-' 智能批量美化整个工作簿
-IntelligentBatchBeautify ThisWorkbook
+### 极长文本处理功能详解
 
-' 指定工作表批量处理
-Dim sheets As Collection
-sheets.Add "Sheet1"
-sheets.Add "Sheet2"
-BatchApplyIntelligentDesign sheets, "现代简约"
+#### 文本分类系统
+```
+短文本(Short):     ≤ 10字符  - 标准处理
+中等文本(Medium):  11-30字符 - 适度扩展
+长文本(Long):      31-100字符 - 启用换行
+超长文本(VeryLong): 101-300字符 - 智能断行
+极长文本(Extreme): > 300字符 - 固定宽度+多行显示
 ```
 
-## 📋 API参考
+#### 智能断行算法
+- **中文断行**：优先在句号、逗号、分号等标点处断开
+- **英文断行**：优先在空格、连字符等处断开
+- **混合文本**：智能识别语言边界进行断行
+- **长度控制**：限制最大换行数避免行高过度增长
 
-### 智能美化核心API
+#### 配置选项
+- **极长文本宽度**：固定列宽（默认40字符）
+- **长文本阈值**：触发特殊处理的字符数（默认100）
+- **智能断行**：启用/禁用智能断行算法
+- **最大换行行数**：限制换行数量（默认3行）
+
+## 🚨 问题排查指南
+
+### 常见问题及解决方法
+
+#### 问题1：行高调整过大
+**症状**：优化后某些行变得异常高，影响视觉效果
 ```vba
-' 智能向导入口
-LaunchBeautificationWizard()
+' 快速诊断
+DiagnoseRowHeightIssue
 
-' 一键智能美化
-IntelligentBeautify(Optional config As IntelligentConfig)
+' 解决方案1：使用保守优化模式
+ConservativeOptimize
 
-' 应用设计风格
-ApplyDesignStyle(styleName As String, Optional baseColor As Long)
+' 解决方案2：重置异常行高
+ResetRowHeightToNormal
 
-' 生成智能配色
-GenerateColorPalette(baseColor As Long, strategy As String) As ColorPalette
-
-' 构建字体层次
-BuildTypographyHierarchy(baseFont As String) As TypographyHierarchy
-
-' 语义分析
-AnalyzeTableSemantics(tableRange As Range) As TableSemantics
-
-' 创建数据故事
-CreateDataStoryElements(insights As DataInsights)
-
-' 生成美化报告
-GenerateBeautificationReport() As BeautificationReport
+' 解决方案3：重置整个工作表
+ResetAllRowHeights
 ```
 
-### 传统布局优化API（保持兼容）
+#### 问题2：隐藏列影响布局
+**症状**：优化时隐藏的列被意外处理
 ```vba
-' 主要优化函数
-OptimizeLayout()                    ' 完整优化（推荐）
-QuickOptimize()                     ' 快速优化
-ConservativeOptimize()              ' 保守优化
-
-' 专项功能
-OptimizeColumnWidths()              ' 仅优化列宽
-FormatNumbersAndAlignment()         ' 仅格式化
-AutoFreezeTopRow()                  ' 冻结首行
-
-' 极长文本处理
-HandleExtremeTexts()                ' 处理极长文本
-OptimizeTextDisplay()               ' 优化文本显示
-
-' 诊断工具
-DiagnoseRowHeightIssue()            ' 诊断行高问题
-ResetAllRowHeights()                ' 重置行高
-TestConfiguration()                 ' 测试配置
+' 系统已内置隐藏列保护机制
+' 如果仍有问题，请在优化前取消隐藏相关列
 ```
 
-## ⚡ 性能与优化
+#### 问题3：极长文本显示异常
+**症状**：超长文本内容显示不完整
+```vba
+' 调整配置
+g_Config.ExtremeTextWidth = 50  ' 增加极长文本宽度
+g_Config.MaxWrapLines = 5       ' 增加最大换行数
+```
 
-### 智能性能适配
-| 数据规模 | 内存占用 | 处理时间 | 推荐配置 |
-|---------|---------|----------|----------|
-| <1000行 | <50MB | <2秒 | 完整功能 |
-| 1000-5000行 | <100MB | <5秒 | 标准模式 |
-| 5000-20000行 | <200MB | <15秒 | 快速模式 |
-| >20000行 | <500MB | <30秒 | 极速模式 |
+## 📊 使用场景
 
-### 处理策略
-- **小数据(<1000行)**: 实时处理，完整功能
-- **中数据(1000-10000行)**: 批量处理，保持体验
-- **大数据(>10000行)**: 分段处理，显示进度
-- **企业级(>50000行)**: 分布式处理，云端协助
+### 场景1：数据报表优化
+```
+原始问题：标题"客户满意度调查结果统计分析报告"被截断
+优化结果：标题完整显示，智能换行，行高合适
+```
 
-## 🛡️ 安全与隐私
+### 场景2：财务数据表格
+```
+原始问题：列标题过长导致数据列宽不合理
+优化结果：标题和数据都能完整显示，保持视觉平衡
+```
 
-### 数据安全保障
-- ✅ **本地处理**：所有计算在本地完成，数据不上传
-- ✅ **原始备份**：自动创建备份，支持一键恢复
-- ✅ **公式保护**：保留所有原始公式和数据验证
-- ✅ **格式保护**：保持重要的条件格式和图表
+### 场景3：混合内容表格
+```
+原始问题：不同类型数据（文本、数字、日期）格式不统一
+优化结果：保证标题完整的前提下统一各列格式
+```
 
-### 隐私保护
-- ✅ **匿名学习**：个性化学习不涉及具体数据内容
-- ✅ **离线运行**：核心功能完全离线可用
-- ✅ **数据不留存**：处理过程中不保存任何用户数据
+### 场景4：极长文本处理
+```
+原始问题：商品描述、评论等超长文本内容显示不全
+优化结果：智能断行，固定宽度，完整显示内容
+```
 
-## 🤝 社区与支持
+## 🛠️ 安装和配置
 
-### 🆘 获取帮助
-- **文档中心**：[beautification_requirements.md](beautification_requirements/beautification_requirements.md)
-- **问题反馈**：GitHub Issues
-- **功能建议**：GitHub Discussions
-- **技术交流**：Excel VBA 社区
+### 导入步骤
+1. 打开Excel，按 `Alt + F11` 进入VBA编辑器
+2. 右键点击项目，选择"导入文件"
+3. 选择 `ExcelLayoutOptimizer.bas` 文件
+4. 运行 `InstallShortcuts` 安装快捷键（可选）
 
-### 🔄 版本路线图
+### 配置说明
+```vba
+' 主要配置参数
+MaxColumnWidth = 40          ' 最大列宽（字符单位）
+MinColumnWidth = 8.43        ' 最小列宽
+HeaderPriority = True        ' 启用标题优先模式
+HeaderMaxWrapLines = 3       ' 标题最大换行数
+SmartHeaderDetection = True  ' 智能表头识别
 
-#### v4.1 (计划中)
-- 🎯 更多智能设计风格
-- 🌐 多语言界面支持
-- 📱 移动端预览功能
-- 🔗 Office 365 深度集成
+' 极长文本处理配置（v3.2新增）
+ExtremeTextWidth = 40        ' 极长文本固定宽度
+LongTextThreshold = 100      ' 长文本阈值
+SmartLineBreak = True        ' 启用智能断行
+MaxWrapLines = 3             ' 最大换行行数
+```
 
-#### v4.5 (未来)
-- 🤖 ChatGPT API 集成
-- ☁️ 云端主题库
-- 👥 团队协作功能
-- 📈 高级数据可视化
+## 🧪 测试验证
 
-### 🏆 贡献指南
-欢迎参与项目改进！
-1. **Fork** 本项目
-2. **创建** 功能分支
-3. **提交** 更改
-4. **发起** Pull Request
+### 运行测试套件
+```vba
+' 在VBA编辑器中运行
+Call RunTestSuite
+```
 
-### 📊 版本历史
+### 测试覆盖
+- ✅ 数据类型智能识别
+- ✅ 列宽计算准确性
+- ✅ 标题优先功能（新增）
+- ✅ 缓存机制效率
+- ✅ 配置持久化
 
-#### v4.0 (2025-08-29) - 🚀 智能设计系统版本
-- 🆕 **革命性升级**：从工具到智能设计伙伴
-- 🎨 **设计智能**：AI配色生成、字体层次构建、风格智能匹配
-- 🧠 **上下文感知**：表格语义理解、数据叙事增强、业务逻辑分析
-- 🎪 **流畅工作流**：5步智能向导、质量评分报告、个性化学习
-- 💡 **创新突破**：语义分析引擎、色彩和谐算法、智能推荐系统
+## 📈 性能特性
 
-#### v3.2 (2025-08-18) - 极长文本版本
-- 🆕 新增极长文本处理机制，5级文本分类
-- 🔧 智能断行算法，支持中英文混合
-- 🛡️ 保守优化模式，避免行高过度调整
-- 🔍 诊断修复工具集
+### 处理能力
+| 数据规模 | 处理时间 | 内存占用 |
+|---------|---------|----------|
+| 1,000行×20列 | < 2秒 | < 50MB |
+| 10,000行×50列 | < 10秒 | < 200MB |
+| 50,000行×100列 | < 30秒 | < 500MB |
 
-#### v3.1 (2025-08-18) - 标题优先版本
-- 🆕 标题优先完整显示功能
+### 优化特性
+- **分块处理**：大数据自动分块避免内存溢出
+- **缓存机制**：重复内容计算结果缓存提升速度
+- **中断支持**：长时间处理可按ESC键中断
+
+## 📋 版本历史
+
+### v3.2 (2025-01-XX) - 极长文本处理版本
+- 🆕 新增5级文本长度分类系统
+- 🆕 智能断行算法支持中英文混合
+- 🆕 保守优化模式 `ConservativeOptimize()`
+- 🆕 诊断工具 `DiagnoseRowHeightIssue()`
+- 🆕 批量重置工具 `ResetAllRowHeights()`
+- 🔧 修复行高计算过度调整问题
+- 🔧 增强隐藏单元格保护机制
+- 🔧 优化配置系统，新增极长文本处理参数
+
+### v3.1 (2025-08-18) - 标题优先版本
+- 🆕 新增标题优先完整显示功能
 - 🆕 标题自动换行和行高调整
+- 🆕 标题优先模式配置选项
 - 🔧 完善预览信息显示
+- 🧪 增加标题功能专项测试
 
-#### v3.0 (2025-08-16) - 功能完善版本
+### v3.0 (2025-08-16) - 功能完善版本
 - 增加分块处理和缓存机制
 - 完善数据类型智能识别
 - 实现分级错误处理
+- 增加配置持久化
+
+### v2.1 (2025-08-16) - 稳定版本
+- 重构代码解决编译错误
+- 添加撤销、预览、配置功能
+
+### v1.0 (2025-08-09) - 初始版本
+- 基础布局优化功能
+
+## 🤝 贡献指南
+
+### 问题反馈
+遇到问题请提供以下信息：
+- Excel版本和操作系统
+- 数据规模和类型
+- 具体错误信息
+- 重现步骤
+
+### 功能建议
+欢迎提出新功能建议，特别是：
+- 更多标题显示样式
+- 其他类型的智能识别
+- 性能优化建议
 
 ## 📄 许可证
-本项目采用 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件
+
+本项目采用MIT许可证，可自由使用和修改。
 
 ---
 
-## 📞 联系我们
-- **项目维护者**：Excel智能美化系统开发团队
-- **技术支持**：[GitHub Issues](https://github.com/Daydreamdelusion/ExcelLayoutOptimizer/issues)
-- **功能建议**：[GitHub Discussions](https://github.com/Daydreamdelusion/ExcelLayoutOptimizer/discussions)
-
----
-
-**项目地址**：[ExcelLayoutOptimizer](https://github.com/Daydreamdelusion/ExcelLayoutOptimizer)  
-**文档更新**：2025年8月29日  
-**当前版本**：v4.0 智能设计系统版  
-
-*让每个Excel表格都成为艺术品* ✨
+**作者**：dadada  
+**更新日期**：2025年8月18日  
+**版本**：v3.1
