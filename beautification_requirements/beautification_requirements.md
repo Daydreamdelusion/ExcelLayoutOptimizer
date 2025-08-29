@@ -54,11 +54,26 @@
   - 第二行开始出现数值型数据
   - 支持多行表头检测（最多3行）
 
-- **渐变背景**：
-  - 渐变类型：线性渐变、径向渐变
-  - 渐变方向：0°（水平）、90°（垂直）、45°（对角线）、-45°（反对角线）
-  - 渐变步数：2-5个颜色节点
-  - 透明度支持：0-100%
+- **渐变背景**（Excel兼容性限制）：
+  - ~~渐变类型：线性渐变、径向渐变~~
+  - **建议限制**：仅支持两段线性渐变（跨版本一致）
+  - **渐变方向**：水平（0°）、垂直（90°）为主
+  - **渐变步数**：限制为2个颜色节点（打印兼容）
+  - ~~透明度支持：0-100%~~：Excel打印一致性差
+
+**简化渐变方案**：
+```vba
+Sub ApplySimpleGradient(headerRange As Range, startColor As Long, endColor As Long)
+    ' 只用两色线性渐变，确保打印一致性
+    With headerRange.Interior
+        .Pattern = xlPatternLinearGradient
+        .Gradient.Degree = 90  ' 垂直渐变
+        .Gradient.ColorStops.Clear
+        .Gradient.ColorStops.Add(0).Color = startColor
+        .Gradient.ColorStops.Add(1).Color = endColor
+    End With
+End Sub
+```
 
 - **预设主题详细参数**：
   - 蓝色商务：
@@ -102,39 +117,55 @@
   - 列宽检测：总列宽超过屏幕宽度时建议冻结首列
   - 记忆功能：记住用户的冻结偏好
 
-### 2.2 边框和分隔功能
+### 2.2 边框和分隔功能（Excel兼容性优化）
 
-#### 2.2.1 智能边框设置 ⭐ (用户需求)
-**功能描述**：为表格添加专业的边框样式
+#### 2.2.1 智能边框设置 ⭐ (限制Excel原生支持)
+**功能描述**：基于Excel原生边框功能的专业表格样式
 
-**边框类型详细说明**：
+**边框类型说明**：
 - **外边框**：
-  - 线型：实线、双线、粗线
-  - 粗细：1.5pt - 3pt（可调）
-  - 颜色：支持RGB自定义
-  - 圆角：0-5pt（可选）
+  - 线型：实线、双线、粗线（Excel原生支持）
+  - 粗细：Medium、Thick（Excel标准选项）
+  - 颜色：RGB色值（不支持透明度）
+  - ~~圆角：Excel单元格不支持圆角边框~~
 
 - **表头边框**：
-  - 底部边框：1pt - 2pt
-  - 样式：实线、双线、点线
-  - 颜色：比外边框浅20%
+  - 底部边框：Medium、Thick
+  - 样式：实线、双线
+  - 颜色：基于主题色的深浅变化
 
 - **内部网格**：
-  - 线型：实线、虚线、点线
-  - 粗细：0.25pt - 1pt
-  - 颜色：支持透明度设置
+  - 线型：实线、虚线（Excel限制）
+  - 粗细：Thin、Medium
+  - ~~颜色透明度：Excel不支持边框透明度~~
 
-- **列分隔**：
-  - 应用规则：每N列添加分隔线（N可配置）
-  - 特殊列：ID列、汇总列自动添加分隔
+**视觉等效实现方案**：
+```vba
+' 使用浅色内填充 + 分层边框实现"伪圆角"效果
+Sub ApplyPseudoRoundedBorder(rng As Range)
+    With rng
+        ' 主体浅色填充
+        .Interior.Color = RGB(248, 250, 252)
+        
+        ' 外层粗边框
+        .Borders(xlEdgeTop).Weight = xlThick
+        .Borders(xlEdgeTop).Color = RGB(100, 116, 139)
+        
+        ' 内层细边框创建层次感
+        .Borders(xlInsideHorizontal).Weight = xlThin
+        .Borders(xlInsideHorizontal).Color = RGB(226, 232, 240)
+        
+        ' 伪分隔列（通过列宽和填充实现）
+        .Columns(1).ColumnWidth = 0.5  ' 窄列作为分隔
+    End With
+End Sub
+```
 
 **智能边框应用规则**：
-```
 - 合并单元格：自动调整边框以适应合并区域
 - 空白单元格：可选择是否添加边框
-- 隐藏行列：自动跳过隐藏的行列
 - 筛选状态：保持筛选后的边框完整性
-```
+- **性能优化**：批量设置边框，避免逐单元格操作
 
 #### 2.2.2 文字边框显示 ⭐ (用户需求)
 **功能描述**：通过边框突出显示重要文字内容
@@ -338,62 +369,102 @@ End Function
 - **适应性**：可根据行业特点扩展关键词库
 - **专业性**：体现对表格业务逻辑的理解
 
-#### 2.6.3 安全撤销机制 ⭐ (重大升级)
-**功能描述**：自动备份和一键撤销功能，保障数据安全
+#### 2.6.3 智能撤销机制 ⭐ (逻辑撤销，避免复制工作表)
+**功能描述**：基于样式和条件格式的逻辑撤销，避免命名区域、图表缓存、外部引用被破坏
 
-**备份策略**：
+**变更日志机制**：
 ```vba
-Sub CreateBackupBeforeBeautify()
-    ' 创建隐藏的备份工作表
-    Dim originalSheet As Worksheet
-    Dim backupSheet As Worksheet
-    
-    Set originalSheet = ActiveSheet
-    
-    ' 复制当前工作表
-    originalSheet.Copy Before:=originalSheet
-    Set backupSheet = ActiveSheet.Previous
-    
-    ' 设置备份表名称和属性
-    backupSheet.Name = originalSheet.Name & "_BeautifyBackup"
-    backupSheet.Visible = xlSheetHidden
-    
-    ' 添加备份标记
-    backupSheet.Cells(1, 1).Name = "BeautifyBackupMarker"
+' 全局变更记录结构
+Type BeautifyLog
+    StylesAdded As String          ' 新增样式名列表，分号分隔
+    CFRulesAdded As String         ' 新增CF规则ID列表，分号分隔
+    OriginalTableStyle As String   ' 原始表格样式
+    OriginalCellStyles As String   ' 原始单元格样式映射
+    Timestamp As Date              ' 操作时间
+End Type
+
+Dim g_BeautifyHistory As BeautifyLog
+
+Sub InitializeBeautifyLog()
+    ' 清空历史记录
+    g_BeautifyHistory.StylesAdded = ""
+    g_BeautifyHistory.CFRulesAdded = ""
+    g_BeautifyHistory.OriginalTableStyle = ""
+    g_BeautifyHistory.Timestamp = Now
+End Sub
+
+Sub LogStyleChange(styleName As String)
+    If g_BeautifyHistory.StylesAdded = "" Then
+        g_BeautifyHistory.StylesAdded = styleName
+    Else
+        g_BeautifyHistory.StylesAdded = g_BeautifyHistory.StylesAdded & ";" & styleName
+    End If
+End Sub
+
+Sub LogCFRule(ruleAddress As String)
+    If g_BeautifyHistory.CFRulesAdded = "" Then
+        g_BeautifyHistory.CFRulesAdded = ruleAddress
+    Else
+        g_BeautifyHistory.CFRulesAdded = g_BeautifyHistory.CFRulesAdded & ";" & ruleAddress
+    End If
 End Sub
 ```
 
-**撤销机制**：
+**逻辑撤销机制**：
 ```vba
 Sub UndoBeautify()
-    Dim currentSheet As Worksheet
-    Dim backupSheet As Worksheet
-    Dim backupName As String
+    Dim ws As Worksheet
+    Dim styleNames() As String
+    Dim cfRules() As String
+    Dim i As Long, j As Long
     
-    Set currentSheet = ActiveSheet
-    backupName = currentSheet.Name & "_BeautifyBackup"
-    
-    ' 检查备份是否存在
-    If Not WorksheetExists(backupName) Then
-        MsgBox "未找到备份文件，无法撤销！", vbExclamation
-        Exit Sub
-    End If
+    Set ws = ActiveSheet
     
     ' 确认撤销操作
-    If MsgBox("确定要撤销美化效果吗？当前修改将丢失！", vbYesNo + vbQuestion) = vbNo Then
+    If MsgBox("确定要撤销美化效果吗？", vbYesNo + vbQuestion) = vbNo Then
         Exit Sub
     End If
     
-    ' 执行撤销：删除当前表，恢复备份表
-    Application.DisplayAlerts = False
-    currentSheet.Delete
+    Application.ScreenUpdating = False
     
-    Set backupSheet = Worksheets(backupName)
-    backupSheet.Visible = xlSheetVisible
-    backupSheet.Name = Replace(backupName, "_BeautifyBackup", "")
-    Application.DisplayAlerts = True
+    ' 1. 移除新增的自定义样式
+    If g_BeautifyHistory.StylesAdded <> "" Then
+        styleNames = Split(g_BeautifyHistory.StylesAdded, ";")
+        For i = 0 To UBound(styleNames)
+            On Error Resume Next
+            ThisWorkbook.Styles(styleNames(i)).Delete
+            On Error GoTo 0
+        Next i
+    End If
     
-    MsgBox "美化效果已撤销，数据已完全恢复！", vbInformation
+    ' 2. 删除带ELO前缀的条件格式规则
+    For i = ws.Cells.FormatConditions.Count To 1 Step -1
+        If InStr(ws.Cells.FormatConditions(i).Formula1, "ELO_") > 0 Or _
+           Left(ws.Cells.FormatConditions(i).Formula1, 4) = "ELO_" Then
+            ws.Cells.FormatConditions(i).Delete
+        End If
+    Next i
+    
+    ' 3. 还原原始表格样式
+    If g_BeautifyHistory.OriginalTableStyle <> "" Then
+        For Each tbl In ws.ListObjects
+            tbl.TableStyle = g_BeautifyHistory.OriginalTableStyle
+        Next tbl
+    End If
+    
+    ' 4. 移除自定义表格样式
+    For i = ActiveWorkbook.TableStyles.Count To 1 Step -1
+        If Left(ActiveWorkbook.TableStyles(i).Name, 4) = "ELO_" Then
+            ActiveWorkbook.TableStyles(i).Delete
+        End If
+    Next i
+    
+    Application.ScreenUpdating = True
+    
+    ' 清空历史记录
+    InitializeBeautifyLog
+    
+    MsgBox "撤销完成！已移除所有美化样式，保留原始数据结构。", vbInformation
 End Sub
 ```
 
@@ -458,35 +529,75 @@ End Sub
 - **重复值标记**：浅黄背景标记重复值
 - **空值提醒**：浅灰背景标记空值
 - **数值范围**：基于百分位的简单颜色标记
-### 2.9 条件格式增强
-**功能描述**：智能应用条件格式规则
+### 2.9 条件格式增强（性能优化版）
+**功能描述**：高性能条件格式应用，避免大范围逐单元格处理
 
-**规则优先级系统**：
-1. 错误值（最高优先级）
-2. 空值
-3. 重复值
-4. 超限值
-5. 负值
-6. 数值范围
-7. 文本匹配
-8. 日期范围
-9. 自定义公式（最低优先级）
+**性能优化规则**：
+- **规则数量限制**：每类不超过1条公式型规则
+- **应用范围**：仅对数据区域一次性应用
+- **分层顺序**：错误→空值→重复→阈值→文本/日期
 
-**内置规则详细说明**：
+**优化的规则优先级**：
+1. **错误值检测** - 公式：`=ISERROR(A1)`
+2. **空值标记** - 公式：`=ISBLANK(A1)`  
+3. **重复值检测** - 公式：`=COUNTIF($A:$A,A1)>1`
+4. **数值阈值** - 公式：`=A1<0` (负数检测)
+5. **文本匹配** - 公式：`=SEARCH("错误",A1)` (关键词检测)
 
-- **数值范围检测**：
-  ```vba
-  ' 异常值检测算法
-  Function DetectOutliers(range As Range) As Collection
-      ' 使用IQR方法检测异常值
-      Q1 = Percentile(range, 0.25)
-      Q3 = Percentile(range, 0.75)
-      IQR = Q3 - Q1
-      LowerBound = Q1 - 1.5 * IQR
-      UpperBound = Q3 + 1.5 * IQR
-      ' 标记超出范围的值
-  End Function
-  ```
+**批量应用策略**：
+```vba
+Sub ApplyOptimizedConditionalFormat(dataRange As Range)
+    Application.ScreenUpdating = False
+    Application.Calculation = xlCalculationManual
+    Application.EnableEvents = False
+    
+    ' 清除现有条件格式
+    dataRange.FormatConditions.Delete
+    
+    ' 1. 错误值检测（最高优先级）
+    With dataRange.FormatConditions.Add(xlExpression, , "=ISERROR(" & dataRange.Cells(1, 1).Address(False, False) & ")")
+        .Interior.Color = RGB(254, 226, 226)  ' 浅红色
+        .StopIfTrue = True
+    End With
+    
+    ' 2. 空值检测
+    With dataRange.FormatConditions.Add(xlExpression, , "=ISBLANK(" & dataRange.Cells(1, 1).Address(False, False) & ")")
+        .Interior.Color = RGB(243, 244, 246)  ' 浅灰色
+        .StopIfTrue = False
+    End With
+    
+    ' 3. 负数检测（仅数值列）
+    If IsNumericColumn(dataRange) Then
+        With dataRange.FormatConditions.Add(xlCellValue, xlLess, 0)
+            .Font.Color = RGB(220, 38, 38)  ' 红色字体
+            .StopIfTrue = False
+        End With
+    End If
+    
+    Application.EnableEvents = True
+    Application.Calculation = xlCalculationAutomatic
+    Application.ScreenUpdating = True
+End Sub
+
+Function IsNumericColumn(rng As Range) As Boolean
+    ' 快速检测是否为数值列（检查前5个非空单元格）
+    Dim checkCount As Integer
+    For Each cell In rng
+        If Not IsEmpty(cell) Then
+            If IsNumeric(cell.Value) Then
+                checkCount = checkCount + 1
+            End If
+            If checkCount >= 3 Then Exit For
+        End If
+    Next cell
+    IsNumericColumn = (checkCount >= 3)
+End Function
+```
+
+**大表性能模式**：
+- **触发条件**：数据行数 > 10,000 或列数 > 50
+- **限制措施**：禁用渐变、只套用TableStyle、关闭复杂CF规则
+- **批处理**：按行块处理，每块1000行
 
 - **重复值处理**：
   - 完全重复：深色标记
@@ -502,27 +613,49 @@ End Sub
 
 ### 2.10 新增功能模块
 
-#### 2.10.1 数据验证美化 🆕
-**功能描述**：美化数据验证的显示效果
+#### 2.10.1 数据验证美化 🆕 (Excel限制调整)
+**功能描述**：在Excel原生限制下的数据验证美化
 
 **实现内容**：
-- **下拉列表美化**：
-  - 下拉箭头颜色自定义
-  - 选中项高亮显示
-  - 列表项图标支持
+- **~~下拉列表美化~~**：
+  - ~~下拉箭头颜色自定义~~：Excel原生对象不可定制
+  - ~~列表项图标支持~~：原生控件无法自定义
+  - **替代方案**：使用单元格背景色和字体样式区分状态
 
-- **验证提示美化**：
-  - 输入提示框样式
-  - 错误提示框样式
-  - 信息图标显示
+- **验证提示优化**：
+  - **输入提示文本**：使用简洁明确的提示语
+  - **错误提示文本**：友好的错误说明
+  - ~~提示框皮肤化~~：原生MessageBox不可定制
 
-- **验证状态指示**：
-  - 有效数据：绿色勾号
-  - 无效数据：红色叉号
-  - 待验证：黄色问号
+- **验证状态指示**（Excel兼容方案）：
+```vba
+Sub ApplyValidationStateStyle(cell As Range, validationState As String)
+    Select Case validationState
+        Case "Valid"
+            ' 有效数据：浅绿色背景 + 深绿边框
+            cell.Interior.Color = RGB(220, 252, 231)
+            cell.Borders.Color = RGB(34, 197, 94)
+            
+        Case "Invalid"
+            ' 无效数据：浅红色背景 + 深红边框
+            cell.Interior.Color = RGB(254, 226, 226)
+            cell.Borders.Color = RGB(239, 68, 68)
+            
+        Case "Pending"
+            ' 待验证：浅黄色背景 + 橙色边框
+            cell.Interior.Color = RGB(255, 251, 235)
+            cell.Borders.Color = RGB(245, 158, 11)
+    End Select
+End Sub
+```
 
-#### 2.10.2 打印优化美化 🆕
-**功能描述**：针对打印输出的专门美化
+**简化建议**：
+- 保留**提示文本**和**单元格样式指示**
+- 移除不可实现的UI定制功能
+- 专注于通过颜色和边框传达验证状态
+
+#### 2.10.2 打印优化美化 🆕 (Excel限制调整)
+**功能描述**：针对打印输出的专门美化（修正Excel限制）
 
 **打印设置**：
 - **页面设置**：
@@ -531,14 +664,37 @@ End Sub
   - 页眉页脚美化
 
 - **打印样式**：
-  - 打印专用配色（考虑黑白打印）
+  - 打印专用配色（黑白兼容）
   - 网格线设置
-  - 水印添加
+  - ~~背景水印~~：Excel背景图不随打印输出
 
-- **打印预览**：
-  - 实时预览效果
-  - 分页指示线
-  - 打印区域标记
+**水印替代方案**：
+```vba
+Sub AddPrintWatermark()
+    ' 在页眉插入水印图片（可打印）
+    With ActiveSheet.PageSetup
+        .CenterHeader = "&G"  ' 图片占位符
+        .CenterHeaderPicture.Filename = "C:\Watermark.png"
+        .CenterHeaderPicture.Height = 200
+        .CenterHeaderPicture.Width = 200
+    End With
+End Sub
+```
+
+- **分页预览指引**：
+  - ~~实时绘制分隔线~~：影响性能
+  - **替代方案**：使用分页预览模式 + 虚线边框指示
+```vba
+Sub ShowPageBreaks()
+    ActiveWindow.View = xlPageBreakPreview
+    ' 用虚线边框标记分页位置
+    With ActiveSheet.HPageBreaks(1).Location.Borders(xlEdgeTop)
+        .LineStyle = xlDash
+        .Weight = xlMedium
+        .Color = RGB(128, 128, 128)
+    End With
+End Sub
+```
 
 #### 2.10.3 响应式美化 🆕
 **功能描述**：根据查看设备自适应美化
@@ -1644,34 +1800,139 @@ Private Sub PerformanceTest()
 End Sub
 ```
 
-### 7.3 兼容性测试
+### 7.4 性能模式优化
 
-#### 7.3.1 版本兼容测试
-- Excel 2016/2019/365各版本
-- Windows 7/8/10/11系统
-- 不同分辨率屏幕
-- 不同语言环境
+#### 7.4.1 大表性能模式
+**触发条件**：
+- 数据行数 > 10,000
+- 列数 > 50
+- 文件大小 > 50MB
 
-## 8. 部署和维护
+**性能限制策略**：
+```vba
+Sub EnablePerformanceMode(ws As Worksheet)
+    Dim dataRange As Range
+    Set dataRange = GetDataRange(ws)
+    
+    ' 检测是否需要性能模式
+    If dataRange.Rows.Count > 10000 Or dataRange.Columns.Count > 50 Then
+        
+        ' 1. 限制条件格式规则数量
+        ClearExcessiveConditionalFormats dataRange
+        
+        ' 2. 禁用渐变效果
+        DisableGradientEffects dataRange
+        
+        ' 3. 只套用TableStyle
+        ApplyTableStyleOnly dataRange
+        
+        ' 4. 按行块批处理
+        ProcessInBatches dataRange, 1000
+        
+        MsgBox "已启用性能模式：限制美化效果以提升性能", vbInformation
+    End If
+End Sub
 
-### 8.1 部署方案
-
-#### 8.1.1 安装包结构
+Sub ProcessInBatches(dataRange As Range, batchSize As Long)
+    Dim i As Long
+    Dim batchRange As Range
+    
+    Application.ScreenUpdating = False
+    Application.Calculation = xlCalculationManual
+    Application.EnableEvents = False
+    
+    For i = 1 To dataRange.Rows.Count Step batchSize
+        Set batchRange = dataRange.Rows(i).Resize(Application.Min(batchSize, dataRange.Rows.Count - i + 1))
+        
+        ' 批量应用简化样式
+        ApplySimplifiedStyle batchRange
+        
+        ' 进度提示
+        If i Mod 5000 = 0 Then
+            Application.StatusBar = "处理进度: " & Format(i / dataRange.Rows.Count, "0%")
+        End If
+    Next i
+    
+    Application.EnableEvents = True
+    Application.Calculation = xlCalculationAutomatic
+    Application.ScreenUpdating = True
+    Application.StatusBar = False
+End Sub
 ```
-ExcelBeautifier/
-├── BeautifySystem.xlam       # 主程序文件
-├── Themes/                   # 主题文件夹
-│   ├── Business.theme
-│   ├── Finance.theme
-│   └── ...
-├── Config/                   # 配置文件夹
-│   ├── default.config
-│   └── user.config
-├── Help/                     # 帮助文档
-│   ├── UserGuide.pdf
-│   └── QuickStart.pdf
-└── Setup.exe                 # 安装程序
+
+#### 7.4.2 单模块架构说明
+**设计原则**：
+- 移除Ribbon自定义标签（复杂UI）
+- 取消五步向导（简化为直接执行）
+- 去除报告对话框（重UI功能）
+- 保留核心功能：主题样式、基础CF、打印预设
+
+**Lite版本功能清单**：
+```vba
+' === 单模块核心功能 ===
+Sub BeautifyLite()
+    ' 1. 主题样式应用
+    ApplyThemeStyles ActiveSheet
+    
+    ' 2. 基础条件格式
+    ApplyBasicConditionalFormat ActiveSheet
+    
+    ' 3. 打印预设
+    SetupPrintLayout ActiveSheet
+    
+    ' 4. 逻辑撤销支持
+    InitializeBeautifyLog
+End Sub
+
+' === 性能优先的实现 ===
+Sub ApplyThemeStyles(ws As Worksheet)
+    ' 只应用TableStyle，避免逐单元格操作
+    For Each tbl In ws.ListObjects
+        tbl.TableStyle = "ELO_Business"
+    Next tbl
+End Sub
 ```
+
+## 8. 部署和维护（单模块版）
+
+### 8.1 单模块部署方案
+
+#### 8.1.1 简化部署结构
+```
+ExcelLayoutOptimizer_v4.1/
+├── ExcelLayoutOptimizer.bas   # 单一VBA模块文件
+├── README.md                  # 使用说明
+├── Install_Guide.txt          # 导入指南
+└── Sample_Data.xlsx           # 示例数据
+```
+
+**导入步骤**：
+1. 打开Excel，按 Alt+F11 进入VBA编辑器
+2. 右键点击VBAProject，选择"导入文件"
+3. 选择 ExcelLayoutOptimizer.bas 文件
+4. 按 Alt+F8 运行 `BeautifyLite` 函数
+
+#### 8.1.2 单模块优势
+- **即插即用**：单文件导入，无需安装程序
+- **兼容性强**：支持所有Excel版本（2013+）
+- **体积小巧**：<50KB，快速传输
+- **维护简单**：一个文件包含所有功能
+- **安全可控**：用户可查看所有代码，透明度高
+
+### 8.2 功能精简说明
+
+#### 8.2.1 移除的复杂功能
+- ~~Ribbon自定义标签~~：避免复杂部署
+- ~~五步向导界面~~：简化为直接执行  
+- ~~报告对话框~~：重UI功能移除
+- ~~外部主题文件~~：内置在VBA代码中
+
+#### 8.2.2 保留的核心功能
+- ✅ 主题样式（Business/Financial/Minimal）
+- ✅ 基础条件格式（错误/空值/负数检测）
+- ✅ 打印预设（页面设置/分页优化）
+- ✅ 逻辑撤销机制（样式移除，非工作表复制）
+- ✅ 性能模式（大表优化）
 
 #### 8.1.2 自动更新机制
 ```vba
