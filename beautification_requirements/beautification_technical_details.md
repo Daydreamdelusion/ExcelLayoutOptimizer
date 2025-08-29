@@ -288,10 +288,10 @@ End Sub
 
 ### 4.2 具体规则实现
 ```vba
-' 错误值高亮
+' 错误值高亮（R1C1相对引用）
 Private Sub ApplyErrorHighlight(rng As Range, tag As String)
     Dim formula As String
-    formula = "=ISERROR(A1)+N(0*LEN(""" & tag & """))"
+    formula = "=ISERROR(RC)+N(0*LEN(""" & tag & """))"
     
     With rng.FormatConditions.Add(Type:=xlExpression, Formula1:=formula)
         .Interior.Color = RGB(254, 226, 226)  ' 浅红背景
@@ -301,38 +301,51 @@ Private Sub ApplyErrorHighlight(rng As Range, tag As String)
     End With
 End Sub
 
-' 空值标记
+' 空值标记（R1C1相对引用）
 Private Sub ApplyEmptyHighlight(rng As Range, tag As String)
     Dim formula As String
-    formula = "=ISBLANK(A1)+N(0*LEN(""" & tag & """))"
+    formula = "=ISBLANK(RC)+N(0*LEN(""" & tag & """))"
     
     With rng.FormatConditions.Add(Type:=xlExpression, Formula1:=formula)
-        .Interior.Color = RGB(243, 244, 246)  ' 浅灰背景
+        .Interior.Color = RGB(249, 250, 251)  ' 浅灰背景
+        .Font.Color = RGB(107, 114, 128)      ' 灰色字体
         .StopIfTrue = False
         .Priority = 2
     End With
 End Sub
 
-' 重复值检测（动态列引用）
+' 重复值检测（限定范围，R1C1相对引用）
 Private Sub ApplyDuplicateHighlight(col As Range, tag As String)
-    Dim colLetter As String
     Dim formula As String
+    Dim colAddress As String
     
-    ' 获取列字母
-    colLetter = Split(col.Cells(1, 1).Address, "$")(1)
-    
-    ' 构建动态公式
-    formula = "=COUNTIF(" & colLetter & ":" & colLetter & ",$" & colLetter & "1)>1+N(0*LEN(""" & tag & """))"
+    ' 获取列的数据范围地址（排除表头）
+    colAddress = col.Address(False, False)
+    formula = "=AND(RC<>"""",COUNTIF(" & colAddress & ",RC)>1)+N(0*LEN(""" & tag & """))"
     
     With col.FormatConditions.Add(Type:=xlExpression, Formula1:=formula)
         .Interior.Color = RGB(255, 251, 235)  ' 浅黄背景
+        .Font.Color = RGB(146, 64, 14)        ' 橙色字体
         .StopIfTrue = False
         .Priority = 3
     End With
 End Sub
 
-' 负数高亮
+' 负数检测（统一表达式型，R1C1相对引用）
 Private Sub ApplyNegativeHighlight(col As Range, tag As String)
+    Dim formula As String
+    formula = "=RC<0+N(0*LEN(""" & tag & """))"
+    
+    With col.FormatConditions.Add(Type:=xlExpression, Formula1:=formula)
+        .Font.Color = RGB(220, 38, 38)  ' 红色字体
+        .Font.Bold = True
+        .StopIfTrue = False
+        .Priority = 4
+    End With
+End Sub
+```
+
+### 4.3 辅助检测函数
     With col.FormatConditions.Add(Type:=xlCellValue, Operator:=xlLess, Formula1:="0")
         .Font.Color = RGB(220, 38, 38)  ' 红色字体
         .NumberFormat = "[Red](#,##0.00);[Red]-#,##0.00"

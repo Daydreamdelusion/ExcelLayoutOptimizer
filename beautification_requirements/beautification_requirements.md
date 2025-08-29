@@ -94,11 +94,11 @@ End Function
 #### 2.2.1 标准条件格式规则
 **功能描述**：应用最常用的条件格式规则
 
-**内置规则（A1引用格式）**：
-1. **负数标红**：`=A1<0` - 红色字体突出负数
-2. **重复值标黄**：`=COUNTIF(A:A,A1)>1` - 黄色背景标记重复
-3. **空值标灰**：`=ISBLANK(A1)` - 灰色背景提醒空值
-4. **错误标红**：`=ISERROR(A1)` - 红色背景标记错误
+**内置规则（R1C1相对引用格式）**：
+1. **负数标红**：`=RC<0+N(0*LEN("ELO_TAG"))` - 红色字体突出负数
+2. **重复值标黄**：`=AND(RC<>"",COUNTIF(列数据区,RC)>1)+N(0*LEN("ELO_TAG"))` - 黄色背景标记重复
+3. **空值标灰**：`=ISBLANK(RC)+N(0*LEN("ELO_TAG"))` - 灰色背景提醒空值
+4. **错误标红**：`=ISERROR(RC)+N(0*LEN("ELO_TAG"))` - 红色背景标记错误
 
 **应用策略**：
 ```vba
@@ -106,19 +106,32 @@ Sub ApplyStandardConditionalFormat(dataRange As Range)
     Dim sessionTag As String
     sessionTag = "ELO_" & Format(Now, "yyyymmddhhmmss")
     
-    ' 负数标红
-    With dataRange.FormatConditions.Add(xlExpression, , "=(A1<0)+N(0*LEN(""" & sessionTag & """))")
-        .Font.Color = RGB(220, 38, 38)
+    ' 错误值检测（优先级最高）
+    With dataRange.FormatConditions.Add(xlExpression, , "=ISERROR(RC)+N(0*LEN(""" & sessionTag & """))")
+        .Interior.Color = RGB(254, 226, 226)  ' 浅红背景
         .StopIfTrue = False
     End With
     
-    ' 重复值标黄（逐列应用）
+    ' 空值标记
+    With dataRange.FormatConditions.Add(xlExpression, , "=ISBLANK(RC)+N(0*LEN(""" & sessionTag & """))")
+        .Interior.Color = RGB(249, 250, 251)  ' 浅灰背景
+        .StopIfTrue = False
+    End With
+    
+    ' 负数突出（统一为表达式型）
+    With dataRange.FormatConditions.Add(xlExpression, , "=RC<0+N(0*LEN(""" & sessionTag & """))")
+        .Font.Color = RGB(220, 38, 38)  ' 红色字体
+        .StopIfTrue = False
+    End With
+    
+    ' 重复值检测（逐列应用，限定范围）
     Dim col As Range
     For Each col In dataRange.Columns
-        Dim colLetter As String
-        colLetter = Split(col.Cells(1, 1).Address, "$")(1)
-        With col.FormatConditions.Add(xlExpression, , "=COUNTIF(" & colLetter & ":" & colLetter & ",A1)>1+N(0*LEN(""" & sessionTag & """))")
-            .Interior.Color = RGB(255, 251, 235)
+        Dim colAddress As String
+        colAddress = col.Address(False, False)  ' 相对引用格式
+        With col.FormatConditions.Add(xlExpression, , "=AND(RC<>"""",COUNTIF(" & colAddress & ",RC)>1)+N(0*LEN(""" & sessionTag & """))")
+            .Interior.Color = RGB(255, 251, 235)  ' 浅黄色
+            .StopIfTrue = False
         End With
     Next col
 End Sub
@@ -455,7 +468,54 @@ Function DetectTableRange() As Range
 End Function
 
 Function DetectHeaderRange(tableRange As Range) As Range
-    ' 简单检测：首行作为表头
+    ' 智能表头检测：基于多维度评分算法
+    Dim headerScore As Long, rowNum As Long
+    Dim maxHeaderRows As Long
+    maxHeaderRows = 3  ' 最多检测3行作为表头
+    
+    ' 评分标准
+    Const SCORE_ALL_TEXT As Long = 30       ' 全部为文本
+    Const SCORE_NO_EMPTY As Long = 25       ' 无空单元格
+    Const SCORE_FORMAT_DIFF As Long = 20    ' 格式差异
+    Const SCORE_BOLD_FONT As Long = 15      ' 加粗字体
+    Const SCORE_BG_COLOR As Long = 10       ' 背景色
+    Const SCORE_TYPE_DIFF As Long = 20      ' 数据类型差异
+    
+    Dim testRows As Long
+    testRows = Application.Min(maxHeaderRows, tableRange.Rows.Count)
+    
+    For rowNum = 1 To testRows
+        headerScore = 0
+        Set testRow = tableRange.Rows(rowNum)
+        
+        ' 评分逻辑
+        If IsAllText(testRow) Then headerScore = headerScore + SCORE_ALL_TEXT
+        If HasNoEmpty(testRow) Then headerScore = headerScore + SCORE_NO_EMPTY
+        If HasFormatting(testRow) Then headerScore = headerScore + SCORE_FORMAT_DIFF
+        If HasBoldFont(testRow) Then headerScore = headerScore + SCORE_BOLD_FONT
+        If HasBackgroundColor(testRow) Then headerScore = headerScore + SCORE_BG_COLOR
+        
+        ' 与下一行对比
+        If rowNum < tableRange.Rows.Count Then
+            If HasTypeDifference(testRow, tableRange.Rows(rowNum + 1)) Then
+                headerScore = headerScore + SCORE_TYPE_DIFF
+            End If
+        End If
+        
+        ' 判断是否为表头（阈值60分）
+        If headerScore < 60 Then
+            If rowNum = 1 Then
+                ' 第一行分数不够，默认第一行为表头
+                Set DetectHeaderRange = tableRange.Rows(1)
+            Else
+                ' 找到数据行，前面的行都是表头
+                Set DetectHeaderRange = tableRange.Rows("1:" & (rowNum - 1))
+            End If
+            Exit Function
+        End If
+    Next rowNum
+    
+    ' 默认第一行为表头
     Set DetectHeaderRange = tableRange.Rows(1)
 End Function
 ```
@@ -645,12 +705,12 @@ End Function
 - **应用范围**：仅对数据区域一次性应用
 - **分层顺序**：错误→空值→重复→阈值→文本/日期
 
-**优化的规则优先级（A1引用规范）**：
-1. **错误值检测** - 公式：`=ISERROR(A1)`
-2. **空值标记** - 公式：`=ISBLANK(A1)`  
-3. **重复值检测** - 逐列应用：`=COUNTIF(A:A,A1)>1`（动态调整列引用）
-4. **数值阈值** - 逐列判定：`=A1<0` (负数检测，仅应用于数值列)
-5. **文本匹配** - 公式：`=ISNUMBER(SEARCH("错误",A1))` (关键词检测)
+**优化的规则优先级（R1C1相对引用规范）**：
+1. **错误值检测** - 公式：`=ISERROR(RC)+N(0*LEN("ELO_TAG"))`
+2. **空值标记** - 公式：`=ISBLANK(RC)+N(0*LEN("ELO_TAG"))`  
+3. **重复值检测** - 逐列应用：`=AND(RC<>"",COUNTIF(列数据区,RC)>1)+N(0*LEN("ELO_TAG"))`（限定数据范围）
+4. **数值阈值** - 逐列判定：`=RC<0+N(0*LEN("ELO_TAG"))` (负数检测，仅应用于数值列)
+5. **文本匹配** - 公式：`=ISNUMBER(SEARCH("错误",RC))+N(0*LEN("ELO_TAG"))` (关键词检测)
 
 ## 3. 性能和安全优化
 
@@ -1005,15 +1065,6 @@ Type ContentAnalysis
     BusinessType As String  ' "Financial", "General", "Report"
 End Type
 
-' UserForm选项配置
-Type FormOptions
-    SelectedTheme As String
-    FreezeHeader As Boolean
-    ZebraStripes As Boolean
-    SmartSummary As Boolean
-End Type
-```
-
 ' 表格信息结构
 Type TableInfo
     HeaderRange As Range
@@ -1247,14 +1298,13 @@ Public Sub LoadUserSettings()
 End Sub
 ```
 
-## 4. v4.1专业操作流程
+## 4. 操作流程
 
-### 4.1 专业UserForm美化流程
-1. **运行主程序** - `BeautifyTable()` 自动弹出专业界面
-2. **直观选择主题** - 点选主题，查看实时说明
-3. **配置高级选项** - 勾选需要的功能（冻结、隔行、智能识别）
-4. **变更日志记录** - 点击"开始美化"，系统记录变更并美化
-5. **效果确认** - 查看结果，不满意可运行`UndoBeautify()`撤销
+### 4.1 简化美化流程
+1. **选择表格** - 选中要美化的表格区域（可选，会自动检测）
+2. **运行主程序** - 执行`BeautifyTable()`函数
+3. **自动美化** - 系统自动应用商务主题美化
+4. **效果确认** - 查看结果，如需撤销可运行`UndoBeautify()`
 
 ### 4.2 智能识别处理流程
 ```vba
@@ -2041,27 +2091,17 @@ ExcelLayoutOptimizer_v4.1/
 - **维护简单**：一个文件包含所有功能
 - **安全可控**：用户可查看所有代码，透明度高
 
-#### 8.2.3 Ribbon界面说明
-**当前版本限制**：
-- **单模块(.bas)**：不支持Ribbon customUI
-- **原因**：Ribbon需要加载项(.xlam)架构支持
-- **替代方案**：UserForm专业界面
-
-**未来扩展**：
-- Ribbon界面可考虑在企业版中作为可选扩展
-- 需要重构为加载项架构(.xlam格式)
-- 当前专注于单模块部署的核心功能
-
 ### 8.3 功能精简说明
 
-#### 8.2.1 移除的复杂功能
-- ~~Ribbon自定义标签~~：避免复杂部署
+#### 8.3.1 移除的复杂功能
+- ~~UserForm界面~~：避免复杂部署
+- ~~主题选择界面~~：简化为固定商务主题
 - ~~五步向导界面~~：简化为直接执行  
 - ~~报告对话框~~：重UI功能移除
 - ~~外部主题文件~~：内置在VBA代码中
 
-#### 8.2.2 保留的核心功能
-- ✅ 主题样式（Business/Financial/Minimal）
+#### 8.3.2 保留的核心功能
+- ✅ 固定商务主题样式（Business）
 - ✅ 基础条件格式（错误/空值/负数检测）
 - ✅ 打印预设（页面设置/分页优化）
 - ✅ 逻辑撤销机制（样式移除，非工作表复制）
