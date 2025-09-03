@@ -40,7 +40,7 @@
    - 针对不同内容类型优化字体选择
 
 8. **统一日志接口** ✅
-   - LogCFRule()统一记录格式：地址|标签|类型|优先级
+   - LogCFRule()统一记录格式：地址|标签（两段式）
    - 删除分叉的日志记录方式，确保撤销一致性
 
 ---
@@ -289,6 +289,11 @@ Private Sub ApplyStandardConditionalFormat(dataRange As Range)
     ' *** 统一会话标签，确保撤销一致性 ***
     sessionTag = GetSessionTag()  ' 使用全局统一标签
     
+    ' *** 关键：R1C1引用风格切换保护 ***
+    Dim prevStyle As XlReferenceStyle
+    prevStyle = Application.ReferenceStyle
+    Application.ReferenceStyle = xlR1C1
+    
     On Error GoTo ErrorHandler
     Application.EnableEvents = False
     Application.ScreenUpdating = False
@@ -315,12 +320,18 @@ Private Sub ApplyStandardConditionalFormat(dataRange As Range)
         End If
     Next col
     
+    ' *** 恢复原始引用风格 ***
+    Application.ReferenceStyle = prevStyle
+    
 CleanUp:
+    ' *** 恢复原始引用风格（错误情况下也要恢复）***
+    Application.ReferenceStyle = prevStyle
     Application.EnableEvents = True
     Application.ScreenUpdating = True
     Exit Sub
     
 ErrorHandler:
+    Application.ReferenceStyle = prevStyle  ' 错误时也恢复
     MsgBox "条件格式应用失败: " & Err.Description, vbExclamation
     Resume CleanUp
 End Sub
@@ -540,21 +551,6 @@ Private Function GetThemeConfig(themeName As String) As BeautifyConfig
     GetThemeConfig = config
 End Function
 
-' 商务主题配置
-Private Function GetBusinessTheme() As BeautifyConfig
-    Dim config As BeautifyConfig
-    
-    With config
-        .ThemeName = "Business"
-        .PrimaryColor = RGB(30, 58, 138)      ' 深蓝
-        .SecondaryColor = RGB(59, 130, 246)   ' 亮蓝
-        .AccentColor = RGB(239, 246, 255)     ' 浅蓝背景
-        
-        .EnableHeaderBeautify = True
-        .EnableConditionalFormat = True
-        .EnableBorders = True
-        .EnableZebraStripes = False
-        .EnableFreezeHeader = True
 ' 商务主题配置（默认开启斑马纹）
 Private Function GetBusinessTheme() As BeautifyConfig
     Dim config As BeautifyConfig
@@ -568,7 +564,7 @@ Private Function GetBusinessTheme() As BeautifyConfig
         .EnableHeaderBeautify = True
         .EnableConditionalFormat = True
         .EnableBorders = True
-        .EnableZebraStripes = True            ' *** 修改：默认开启斑马纹 ***
+        .EnableZebraStripes = True            ' *** 默认开启斑马纹 ***
         .EnableFreezeHeader = True
         
         .HeaderFontSize = 11

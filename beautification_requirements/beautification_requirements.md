@@ -91,14 +91,16 @@ End Function
 
 ### 2.2 条件格式智能应用
 
+> **🔧 系统架构说明**：本系统统一使用 R1C1 引用风格，文中所有公式均按 R1C1 解析执行。
+
 #### 2.2.1 标准条件格式规则
 **功能描述**：应用最常用的条件格式规则
 
-**内置规则（A1相对引用格式）**：
-1. **负数标红**：`=$A1<0+N(0*LEN("ELO_TAG"))` - 红色字体突出负数
-2. **重复值标黄**：`=AND($A1<>"",COUNTIF($A:$A,$A1)>1)+N(0*LEN("ELO_TAG"))` - 黄色背景标记重复
-3. **空值标灰**：`=ISBLANK(A1)+N(0*LEN("ELO_TAG"))` - 灰色背景提醒空值
-4. **错误标红**：`=ISERROR(A1)+N(0*LEN("ELO_TAG"))` - 红色背景标记错误
+**内置规则（R1C1相对引用格式）**：
+1. **负数标红**：`=RC<0+N(0*LEN("ELO_TAG"))` - 红色字体突出负数
+2. **重复值标黄**：`=AND(RC<>"",COUNTIF(C[0],RC)>1)+N(0*LEN("ELO_TAG"))` - 黄色背景标记重复
+3. **空值标灰**：`=ISBLANK(RC)+N(0*LEN("ELO_TAG"))` - 灰色背景提醒空值
+4. **错误标红**：`=ISERROR(RC)+N(0*LEN("ELO_TAG"))` - 红色背景标记错误
 
 **应用策略**：
 ```vba
@@ -106,48 +108,54 @@ Sub ApplyStandardConditionalFormat(dataRange As Range)
     Dim sessionTag As String
     sessionTag = "ELO_" & g_BeautifyHistory.SessionId
     
+    ' *** 关键：R1C1引用风格切换保护 ***
+    Dim prevStyle As XlReferenceStyle
+    prevStyle = Application.ReferenceStyle
+    Application.ReferenceStyle = xlR1C1
+    
     ' 预清理同标签规则，确保幂等性
     ClearExistingRules dataRange, sessionTag
     
-    ' 错误值检测（优先级最高） - 修正为绝对列相对行引用
-    With dataRange.FormatConditions.Add(xlExpression, , "=ISERROR($A1)+N(0*LEN(""" & sessionTag & """))")
+    ' 错误值检测（优先级最高）- R1C1相对引用
+    With dataRange.FormatConditions.Add(xlExpression, , "=ISERROR(RC)+N(0*LEN(""" & sessionTag & """))")
         .Interior.Color = RGB(254, 226, 226)  ' 浅红背景
         .Priority = 1
         .StopIfTrue = False
     End With
-    LogCFRule dataRange.Address & "|" & sessionTag & "|Error|1"
+    LogCFRule dataRange.Address & "|" & sessionTag
     
-    ' 空值标记 - 修正为绝对列相对行引用
-    With dataRange.FormatConditions.Add(xlExpression, , "=ISBLANK($A1)+N(0*LEN(""" & sessionTag & """))")
+    ' 空值标记 - R1C1相对引用
+    With dataRange.FormatConditions.Add(xlExpression, , "=ISBLANK(RC)+N(0*LEN(""" & sessionTag & """))")
         .Interior.Color = RGB(249, 250, 251)  ' 浅灰背景
         .Priority = 2
         .StopIfTrue = False
     End With
-    LogCFRule dataRange.Address & "|" & sessionTag & "|Blank|2"
+    LogCFRule dataRange.Address & "|" & sessionTag
     
     ' 逐列应用重复值和负数检测
-    Dim col As Range, colLetter As String
+    Dim col As Range
     For Each col In dataRange.Columns
-        colLetter = Split(col.Cells(1, 1).Address, "$")(1)
-        
-        ' 重复值检测（绝对列，相对行）
-        With col.FormatConditions.Add(xlExpression, , "=AND($" & colLetter & "1<>"""",COUNTIF($" & colLetter & ":$" & colLetter & ",$" & colLetter & "1)>1)+N(0*LEN(""" & sessionTag & """))")
+        ' 重复值检测（R1C1列相对引用）
+        With col.FormatConditions.Add(xlExpression, , "=AND(RC<>"""",COUNTIF(C[0],RC)>1)+N(0*LEN(""" & sessionTag & """))")
             .Interior.Color = RGB(255, 251, 235)  ' 浅黄色
             .Priority = 3
             .StopIfTrue = False
         End With
-        LogCFRule col.Address & "|" & sessionTag & "|Duplicate|3"
+        LogCFRule col.Address & "|" & sessionTag
         
-        ' 负数检测（仅数值列）
+        ' 负数检测（仅数值列，仅字体颜色）
         If IsNumericColumn(col) Then
-            With col.FormatConditions.Add(xlExpression, , "=$" & colLetter & "1<0+N(0*LEN(""" & sessionTag & """))")
+            With col.FormatConditions.Add(xlExpression, , "=RC<0+N(0*LEN(""" & sessionTag & """))")
                 .Font.Color = RGB(220, 38, 38)  ' 红色字体
                 .Priority = 4
                 .StopIfTrue = False
             End With
-            LogCFRule col.Address & "|" & sessionTag & "|Negative|4"
+            LogCFRule col.Address & "|" & sessionTag
         End If
     Next col
+    
+    ' *** 恢复原始引用风格 ***
+    Application.ReferenceStyle = prevStyle
 End Sub
 ```
 
@@ -189,7 +197,6 @@ End Sub
 - **字体优化详细参数**：
   - 字体加粗：Bold (700)
   - 字体大小：数据行字号 + 1pt（最大12pt，最小9pt）
-  - 字符间距：正常（0）到宽松（+0.5pt）
   - 行高：自动调整（最小18pt）
 
 #### 2.1.2 首行冻结 ⭐ (用户需求)
@@ -370,19 +377,28 @@ NegativeFormats = Array( _
 Function SelectOptimalFont(contentType As String) As String
     Select Case contentType
         Case "ChineseHeader"
-            SelectOptimalFont = "微软雅黑"
+            SelectOptimalFont = "微软雅黑"  ' 中文标题
         Case "ChineseData"
-            SelectOptimalFont = "微软雅黑 Light"
+            SelectOptimalFont = "微软雅黑"  ' 统一微软雅黑，删除Light字重
         Case "EnglishHeader"
-            SelectOptimalFont = "Calibri"
+            SelectOptimalFont = "Calibri"  ' 英文标题
         Case "EnglishData"
-            SelectOptimalFont = "Arial"
-        Case "Number"
-            SelectOptimalFont = "Consolas"
-        Case "Currency"
-            SelectOptimalFont = "Times New Roman"
+            SelectOptimalFont = "Arial"    ' 英文数据
+        Case "Number", "Currency", "Financial"
+            ' *** 数字/金额统一等宽字体，优先级回退 ***
+            If IsFontAvailable("Consolas") Then
+                SelectOptimalFont = "Consolas"      ' 首选等宽
+            ElseIf IsFontAvailable("Courier New") Then
+                SelectOptimalFont = "Courier New"   ' 回退等宽
+            ElseIf IsFontAvailable("SF Mono") Then
+                SelectOptimalFont = "SF Mono"       ' Mac等宽
+            ElseIf IsFontAvailable("Menlo") Then
+                SelectOptimalFont = "Menlo"         ' Mac回退
+            Else
+                SelectOptimalFont = "微软雅黑"       ' 最终回退
+            End If
         Case "Mixed"
-            SelectOptimalFont = "微软雅黑"
+            SelectOptimalFont = "微软雅黑"  ' 中英混排优先中文友好
     End Select
 End Function
 ```
@@ -541,19 +557,23 @@ End Function
 
 **变更日志结构**：
 ```vba
-' 全局变更记录
+' 全局变更记录（精确撤销最小闭环字段）
 Type BeautifyLog
-    CFRulesAdded As String         ' 条件格式规则记录，格式: "地址|标签;"
     SessionId As String            ' 会话ID，确保只撤销本次操作
     Timestamp As Date              ' 操作时间
+    CFRulesAdded As String         ' 条件格式规则记录，格式: "地址|标签;地址|标签"
+    StylesAdded As String          ' 本会话添加的样式名称: "ELO_主题_SessionId;..."
+    TableStylesMap As String       ' 表格样式映射: "表名:原样式;表名:原样式"
 End Type
 
 Dim g_BeautifyHistory As BeautifyLog
 
 Sub InitializeBeautifyLog()
-    g_BeautifyHistory.CFRulesAdded = ""
     g_BeautifyHistory.SessionId = Format(Now, "yyyymmddhhmmss") & "_" & Int(Rnd * 1000)
     g_BeautifyHistory.Timestamp = Now
+    g_BeautifyHistory.CFRulesAdded = ""
+    g_BeautifyHistory.StylesAdded = ""
+    g_BeautifyHistory.TableStylesMap = ""
 End Sub
 
 Sub LogCFRule(ruleInfo As String)
@@ -933,31 +953,7 @@ End Sub
 - **打印样式**：
   - 打印专用配色（黑白兼容）
   - 网格线设置
-  - ~~背景水印~~：Excel背景图不随打印输出
-
-**水印替代方案**：
-```vba
-Sub AddPrintWatermark()
-    ' 在页眉插入水印图片（可打印）
-    Dim watermarkPath As String
-    
-    ' 动态获取水印路径，避免硬编码
-    watermarkPath = ThisWorkbook.Path & "\Assets\Watermark.png"
-    
-    ' 检查文件是否存在
-    If Dir(watermarkPath) = "" Then
-        MsgBox "水印文件未找到，跳过水印设置", vbInformation
-        Exit Sub
-    End If
-    
-    With ActiveSheet.PageSetup
-        .CenterHeader = "&G"  ' 图片占位符
-        .CenterHeaderPicture.Filename = watermarkPath
-        .CenterHeaderPicture.Height = 200
-        .CenterHeaderPicture.Width = 200
-    End With
-End Sub
-```
+  - ~~背景水印~~：违背单模块/零依赖原则，已删除
 
 - **分页预览指引**：
   - ~~实时绘制分隔线~~：影响性能
