@@ -245,6 +245,66 @@ Private Function IsAllText(rng As Range) As Boolean
     IsAllText = (textCount = totalCount And totalCount > 0)
 End Function
 
+' 检测是否无空单元格
+Private Function HasNoEmpty(rng As Range) As Boolean
+    Dim cell As Range
+    
+    For Each cell In rng.Cells
+        If IsEmpty(cell.Value) Or Trim(cell.Value) = "" Then
+            HasNoEmpty = False
+            Exit Function
+        End If
+    Next cell
+    
+    HasNoEmpty = True
+End Function
+
+' 检测是否有格式化
+Private Function HasFormatting(rng As Range) As Boolean
+    Dim cell As Range
+    
+    For Each cell In rng.Cells
+        ' 检查是否有非默认的背景色、字体样式等
+        If cell.Interior.Color <> xlNone Or _
+           cell.Font.Bold = True Or _
+           cell.Font.Italic = True Or _
+           cell.Font.Underline <> xlUnderlineStyleNone Then
+            HasFormatting = True
+            Exit Function
+        End If
+    Next cell
+    
+    HasFormatting = False
+End Function
+
+' 检测是否有粗体字体
+Private Function HasBoldFont(rng As Range) As Boolean
+    Dim cell As Range
+    
+    For Each cell In rng.Cells
+        If cell.Font.Bold = True Then
+            HasBoldFont = True
+            Exit Function
+        End If
+    Next cell
+    
+    HasBoldFont = False
+End Function
+
+' 检测是否有背景色
+Private Function HasBackgroundColor(rng As Range) As Boolean
+    Dim cell As Range
+    
+    For Each cell In rng.Cells
+        If cell.Interior.Color <> xlNone And cell.Interior.Color <> RGB(255, 255, 255) Then
+            HasBackgroundColor = True
+            Exit Function
+        End If
+    Next cell
+    
+    HasBackgroundColor = False
+End Function
+
 ' 检测数据类型差异
 Private Function HasTypeDifference(row1 As Range, row2 As Range) As Boolean
     Dim diffCount As Long, colCount As Long
@@ -299,6 +359,7 @@ Private Sub ApplyStandardConditionalFormat(dataRange As Range)
     Application.ScreenUpdating = False
     
     ' *** 关键：仅清理带标签的规则，保护用户既有格式 ***
+    ' 先清理整体数据区域
     ClearTaggedRules dataRange, sessionTag
     
     ' 统一优先级顺序（R1C1相对引用）
@@ -308,14 +369,18 @@ Private Sub ApplyStandardConditionalFormat(dataRange As Range)
     ' 2. 空值标记（优先级2）  
     ApplyEmptyHighlight dataRange, sessionTag
     
-    ' 3. 逐列应用重复值检测（精确范围控制）
+    ' 3. 逐列应用重复值检测（精确范围控制，逐列预清理确保幂等性）
     For Each col In dataRange.Columns
+        ' *** 修复：逐列预清理，确保多次运行的幂等性 ***
+        ClearTaggedRules col, sessionTag
         ApplyDuplicateHighlight col, sessionTag
     Next col
     
-    ' 4. 数值列负数检测（仅数值列，避免格式覆盖）
+    ' 4. 数值列负数检测（仅数值列，避免格式覆盖，逐列预清理）
     For Each col In dataRange.Columns
         If IsNumericColumn(col) Then
+            ' *** 修复：逐列预清理，确保多次运行的幂等性 ***
+            ClearTaggedRules col, sessionTag
             ApplyNegativeHighlight col, sessionTag
         End If
     Next col
@@ -417,75 +482,9 @@ Private Sub ApplyNegativeHighlight(col As Range, tag As String)
     
     LogCFRule col.Address & "|" & tag
 End Sub
-        .StopIfTrue = False
-        .Priority = 4
-    End With
-    
-    LogCFRule col.Address & "|" & tag & "|Negative|4"
-End Sub
-End Sub
 ```
 
-### 4.2 具体规则实现
-```vba
-' 错误值高亮（R1C1相对引用）
-Private Sub ApplyErrorHighlight(rng As Range, tag As String)
-    Dim formula As String
-    formula = "=ISERROR(RC)+N(0*LEN(""" & tag & """))"
-    
-    With rng.FormatConditions.Add(Type:=xlExpression, Formula1:=formula)
-        .Interior.Color = RGB(254, 226, 226)  ' 浅红背景
-        .Font.Color = RGB(127, 29, 29)        ' 深红字体
-        .StopIfTrue = False
-        .Priority = 1  ' 最高优先级
-    End With
-End Sub
-
-' 空值标记（R1C1相对引用）
-Private Sub ApplyEmptyHighlight(rng As Range, tag As String)
-    Dim formula As String
-    formula = "=ISBLANK(RC)+N(0*LEN(""" & tag & """))"
-    
-    With rng.FormatConditions.Add(Type:=xlExpression, Formula1:=formula)
-        .Interior.Color = RGB(249, 250, 251)  ' 浅灰背景
-        .Font.Color = RGB(107, 114, 128)      ' 灰色字体
-        .StopIfTrue = False
-        .Priority = 2
-    End With
-End Sub
-
-' 重复值检测（限定范围，R1C1相对引用）
-Private Sub ApplyDuplicateHighlight(col As Range, tag As String)
-    Dim formula As String
-    Dim colAddress As String
-    
-    ' 获取列的数据范围地址（排除表头）
-    colAddress = col.Address(False, False)
-    formula = "=AND(RC<>"""",COUNTIF(" & colAddress & ",RC)>1)+N(0*LEN(""" & tag & """))"
-    
-    With col.FormatConditions.Add(Type:=xlExpression, Formula1:=formula)
-        .Interior.Color = RGB(255, 251, 235)  ' 浅黄背景
-        .Font.Color = RGB(146, 64, 14)        ' 橙色字体
-        .StopIfTrue = False
-        .Priority = 3
-    End With
-End Sub
-
-' 负数检测（统一表达式型，R1C1相对引用）
-Private Sub ApplyNegativeHighlight(col As Range, tag As String)
-    Dim formula As String
-    formula = "=RC<0+N(0*LEN(""" & tag & """))"
-    
-    With col.FormatConditions.Add(Type:=xlExpression, Formula1:=formula)
-        .Font.Color = RGB(220, 38, 38)  ' 红色字体
-        .Font.Bold = True
-        .StopIfTrue = False
-        .Priority = 4
-    End With
-End Sub
-```
-
-### 4.3 统一日志接口（两段式一致）
+### 4.2 统一日志接口（两段式一致）
 ```vba
 ' 快速数值列检测（避免逐单元格遍历）
 Private Function IsNumericColumn(col As Range) As Boolean
@@ -654,11 +653,39 @@ Private Sub ApplyThemeStyle(tableRange As Range, config As BeautifyConfig)
     End If
 End Sub
 
-' 应用表头样式
+' 冻结表头实现
+Private Sub FreezeHeader(headerRange As Range)
+    On Error Resume Next
+    ' 在表头下方一行设置冻结窗格
+    Dim freezeRow As Long
+    freezeRow = headerRange.Row + headerRange.Rows.Count
+    
+    ' 设置冻结位置（表头下方第一行的A列）
+    headerRange.Worksheet.Cells(freezeRow, 1).Select
+    ActiveWindow.FreezePanes = True
+    
+    On Error GoTo 0
+End Sub
+
+' 应用表头样式（商务蓝渐变）
 Private Sub ApplyHeaderStyle(headerRange As Range, config As BeautifyConfig)
     With headerRange
-        ' 背景色
-        .Interior.Color = config.PrimaryColor
+        ' *** 商务蓝线性渐变（≥Excel 2007）***
+        On Error Resume Next
+        If Application.Version >= 12 Then  ' Excel 2007+
+            With .Interior
+                .Pattern = xlPatternLinearGradient
+                .Gradient.Degree = 90  ' 垂直渐变
+                ' 渐变色设置
+                .Gradient.ColorStops.Clear
+                .Gradient.ColorStops.Add(0).Color = config.PrimaryColor      ' 起始色
+                .Gradient.ColorStops.Add(1).Color = RGB(41, 98, 156)          ' 深蓝结束色
+            End With
+        Else
+            ' 旧版Excel回退为纯色
+            .Interior.Color = config.PrimaryColor
+        End If
+        On Error GoTo 0
         
         ' 字体设置
         .Font.Color = RGB(255, 255, 255)  ' 白色字体
@@ -753,22 +780,59 @@ Private Function GetOptimalFont(contentType As String) As String
     End Select
 End Function
 
-' 字体可用性检查
+' 字体可用性检查（稳定的形状试探法）
 Private Function IsFontAvailable(fontName As String) As Boolean
+    Dim originalUpdating As Boolean
+    Dim testShape As Shape
+    Dim testSheet As Worksheet
+    Dim success As Boolean
+    
+    ' 关闭屏幕更新提升性能
+    originalUpdating = Application.ScreenUpdating
+    Application.ScreenUpdating = False
+    
     On Error Resume Next
-    IsFontAvailable = (Application.CommandBars.FindControl(Id:=1728).List(fontName) <> "")
-    If Err.Number <> 0 Then
-        ' 简化检查：尝试设置字体看是否成功
-        Dim testRange As Range
-        Set testRange = ActiveSheet.Range("A1")
-        Dim originalFont As String
-        originalFont = testRange.Font.Name
-        testRange.Font.Name = fontName
-        IsFontAvailable = (testRange.Font.Name = fontName)
-        testRange.Font.Name = originalFont
-        Err.Clear
+    
+    ' 方法1：尝试使用临时形状试探字体（不落盘）
+    Set testSheet = ActiveSheet
+    If Not testSheet Is Nothing Then
+        ' 创建隐藏的临时文本框
+        Set testShape = testSheet.Shapes.AddTextbox(msoTextOrientationHorizontal, 0, 0, 1, 1)
+        testShape.Visible = msoFalse
+        
+        ' 尝试设置字体
+        testShape.TextFrame2.TextRange.Font.Name = fontName
+        success = (testShape.TextFrame2.TextRange.Font.Name = fontName)
+        
+        ' 立即删除临时形状
+        testShape.Delete
+        Set testShape = Nothing
     End If
+    
+    ' 方法2：如果形状方法失败，回退到CommandBars检测
+    If Err.Number <> 0 Or Not success Then
+        Err.Clear
+        ' 尝试CommandBars方法（可能在某些环境下不稳定）
+        On Error Resume Next
+        success = (Application.CommandBars.FindControl(Id:=1728).List(fontName) <> "")
+        
+        ' 方法3：最终回退，直接尝试设置字体到当前选区的一个临时副本
+        If Err.Number <> 0 Then
+            Err.Clear
+            Dim testCell As Range
+            Set testCell = testSheet.Cells(1, 1)  ' 使用A1作为测试
+            Dim originalFont As String
+            originalFont = testCell.Font.Name
+            testCell.Font.Name = fontName
+            success = (testCell.Font.Name = fontName)
+            testCell.Font.Name = originalFont  ' 恢复原始字体
+        End If
+    End If
+    
     On Error GoTo 0
+    Application.ScreenUpdating = originalUpdating
+    
+    IsFontAvailable = success
 End Function
 ```
 

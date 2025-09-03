@@ -114,7 +114,7 @@ Sub ApplyStandardConditionalFormat(dataRange As Range)
     Application.ReferenceStyle = xlR1C1
     
     ' 预清理同标签规则，确保幂等性
-    ClearExistingRules dataRange, sessionTag
+    ClearTaggedRules dataRange, sessionTag
     
     ' 错误值检测（优先级最高）- R1C1相对引用
     With dataRange.FormatConditions.Add(xlExpression, , "=ISERROR(RC)+N(0*LEN(""" & sessionTag & """))")
@@ -455,7 +455,7 @@ Sub BeautifyTable()
     
     ' 5. 应用美化
     If Not headerRange Is Nothing Then
-        Call ApplyHeaderBeautification(headerRange)
+        Call ApplyHeaderStyle(headerRange)
     End If
     Call ApplyStandardConditionalFormat(dataRange)
     Call ApplyProfessionalBorders(targetRange)
@@ -830,7 +830,7 @@ Function SafeExecute(targetRange As Range) As Boolean
     SetPerformanceMode
     
     ' 执行美化操作
-    Call ApplyHeaderBeautification(targetRange.Rows(1))
+    Call ApplyHeaderStyle(targetRange.Rows(1))
     Call ApplyStandardConditionalFormat(targetRange)
     Call ApplyProfessionalBorders(targetRange)
     
@@ -1007,7 +1007,7 @@ Private Sub RestoreAppState(state As AppState)
 Private Sub SetPerformanceMode()
 Private Function SafeExecute(targetRange As Range) As Boolean
 
-Private Sub ApplyHeaderBeautification(headerRange As Range)
+Private Sub ApplyHeaderStyle(headerRange As Range)
 Private Sub ApplyStandardConditionalFormat(dataRange As Range)
 Private Sub ApplyProfessionalBorders(tableRange As Range)
 
@@ -1892,7 +1892,7 @@ ExcelLayoutOptimizer_v4.1/
 | 字体名称 | 字重 | 大小范围 | 行高 | 字符间距 | 适用场景 |
 |---------|------|---------|------|----------|---------|
 | 微软雅黑 | Regular/Bold | 8-12pt | 1.5 | 0 | 中文内容 |
-| 微软雅黑 Light | Light | 8-11pt | 1.5 | 0 | 中文数据 |
+| 微软雅黑 | Regular | 8-11pt | 1.5 | 0 | 中文数据 |
 | Calibri | Regular/Bold | 8-12pt | 1.4 | 0 | 英文内容 |
 | Arial | Regular/Bold | 8-11pt | 1.4 | 0 | 通用内容 |
 | Consolas | Regular | 8-10pt | 1.3 | -0.5 | 数字/代码 |
