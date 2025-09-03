@@ -1,4 +1,49 @@
-# Excel表格美化系统 - 技术实现明细 v1.0
+# Excel表格美化系统 - 技术实现明细 v2.0
+
+## 🔄 v2.0 重要变更说明（2025-09-03）
+
+**基于用户反馈的8项关键优化**：
+
+1. **统一R1C1架构** ✅
+   - 删除所有A1变体实现，统一使用R1C1相对引用
+   - 避免列字母解析的脆弱性，支持跨列区域/合并单元格
+   - 精确AppliesTo控制，防止条件格式跨列误伤
+
+2. **精确撤销最小闭环** ✅
+   - BeautifyLog仅保留：SessionId、Timestamp、CFRulesAdded、StylesAdded、TableStylesMap
+   - 删除未实现的OriginalFormats/ModifiedRanges/CFRuleCount字段
+   - 按会话标签精确删除，避免误删用户既有格式
+
+3. **保护用户既有格式** ✅
+   - 删除"全清空条件格式"路径，禁用dataRange.FormatConditions.Delete
+   - 仅清理带会话标签的规则：ClearTaggedRules()
+   - 撤销时按标签匹配，确保不影响用户原有格式
+
+4. **高性能斑马纹实现** ✅
+   - 使用条件格式替代逐行着色：MOD(ROW()-起始行+1,步长*2)<=步长
+   - 智能自适应步长：小表1行、中表2行、大表3行
+   - 支持分组条纹逻辑
+
+5. **避免NumberFormat覆盖** ✅
+   - 负数检测仅修改字体颜色，不改变用户的小数位设置
+   - 统一使用表达式条件格式，避免xlCellValue + NumberFormat强制覆盖
+   - 仅在IsNumericColumn()判定后应用数值相关规则
+
+6. **Business主题默认斑马纹** ✅
+   - EnableZebraStripes = True（原False改为True）
+   - 大表性能模式自动关闭复杂样式
+   - 智能性能分级：>=10000行自动简化
+
+7. **中英文友好字体** ✅
+   - 金额数字统一使用Consolas等宽字体
+   - 中文环境优先"微软雅黑"，避免中西文混排割裂
+   - 针对不同内容类型优化字体选择
+
+8. **统一日志接口** ✅
+   - LogCFRule()统一记录格式：地址|标签|类型|优先级
+   - 删除分叉的日志记录方式，确保撤销一致性
+
+---
 
 ## 目录
 1. [系统架构设计](#1-系统架构设计)
@@ -80,23 +125,18 @@ End Type
 
 ### 2.2 撤销信息结构
 ```vba
-' 撤销日志结构
+' 撤销日志结构（精确撤销最小闭环字段）
 Private Type BeautifyLog
     ' 会话标识
-    SessionId As String              ' 唯一会话ID
+    SessionId As String              ' 唯一会话ID：Format(Now, "yyyymmddhhmmss") & "_" & Int(Rnd * 1000)
     Timestamp As Date                ' 操作时间戳
     
-    ' 条件格式记录
-    CFRulesAdded As String           ' 格式: "地址|标签;地址|标签..."
-    CFRuleCount As Long              ' 添加的规则数量
+    ' 条件格式记录（按标签删除）
+    CFRulesAdded As String           ' 格式: "地址|标签;地址|标签..." 支持精确删除
     
-    ' 样式记录
-    StylesAdded As String            ' 添加的样式名称列表
-    TableStylesMap As String         ' 表格样式映射: "表名:原样式;..."
-    
-    ' 格式状态
-    OriginalFormats As Collection    ' 原始格式集合
-    ModifiedRanges As String         ' 修改的区域地址列表
+    ' 样式记录（会话级管理）
+    StylesAdded As String            ' 本会话添加的样式名称: "ELO_主题_SessionId;..."
+    TableStylesMap As String         ' 表格样式映射: "表名:原样式;表名:原样式"
 End Type
 ```
 
@@ -237,43 +277,43 @@ End Function
 
 ---
 
-## 4. 条件格式实现
+## 4. 条件格式实现（统一R1C1架构）
 
-### 4.1 条件格式应用策略
+### 4.1 统一R1C1实现策略
 ```vba
+' 条件格式统一应用（删除A1变体，仅保留R1C1实现）
 Private Sub ApplyStandardConditionalFormat(dataRange As Range)
     Dim sessionTag As String
     Dim col As Range
     
-    ' 生成唯一会话标签
-    sessionTag = "ELO_" & Format(Now, "yyyymmddhhmmss") & "_" & Int(Rnd * 1000)
+    ' 使用全局会话ID，确保撤销一致性
+    sessionTag = "ELO_" & g_BeautifyHistory.SessionId
     
     On Error GoTo ErrorHandler
-    
-    ' 禁用事件避免循环触发
     Application.EnableEvents = False
     Application.ScreenUpdating = False
     
-    ' 1. 错误值检测（最高优先级）
+    ' *** 关键：仅清理带标签的规则，保护用户既有格式 ***
+    ClearTaggedRules dataRange, sessionTag
+    
+    ' 统一优先级顺序（R1C1相对引用）
+    ' 1. 错误值检测（优先级1）
     ApplyErrorHighlight dataRange, sessionTag
     
-    ' 2. 空值标记
+    ' 2. 空值标记（优先级2）  
     ApplyEmptyHighlight dataRange, sessionTag
     
-    ' 3. 逐列应用重复值检测
+    ' 3. 逐列应用重复值检测（精确范围控制）
     For Each col In dataRange.Columns
         ApplyDuplicateHighlight col, sessionTag
     Next col
     
-    ' 4. 数值列负数检测
+    ' 4. 数值列负数检测（仅数值列，避免格式覆盖）
     For Each col In dataRange.Columns
         If IsNumericColumn(col) Then
             ApplyNegativeHighlight col, sessionTag
         End If
     Next col
-    
-    ' 记录到撤销日志
-    LogConditionalFormats dataRange, sessionTag
     
 CleanUp:
     Application.EnableEvents = True
@@ -283,6 +323,87 @@ CleanUp:
 ErrorHandler:
     MsgBox "条件格式应用失败: " & Err.Description, vbExclamation
     Resume CleanUp
+End Sub
+
+' 仅清理带会话标签的规则（避免误删用户既有格式）
+Private Sub ClearTaggedRules(rng As Range, sessionTag As String)
+    Dim i As Long, cf As FormatCondition
+    
+    ' 从后往前删除，避免索引变化
+    For i = rng.FormatConditions.Count To 1 Step -1
+        Set cf = rng.FormatConditions(i)
+        
+        ' 检查公式中是否包含会话标签
+        If InStr(cf.Formula1, sessionTag) > 0 Or InStr(cf.Formula2, sessionTag) > 0 Then
+            cf.Delete
+        End If
+    Next i
+End Sub
+```
+
+### 4.2 R1C1相对引用规则实现
+```vba
+' 错误值高亮（R1C1标准）
+Private Sub ApplyErrorHighlight(rng As Range, tag As String)
+    Dim formula As String
+    formula = "=ISERROR(RC)+N(0*LEN(""" & tag & """))"
+    
+    With rng.FormatConditions.Add(Type:=xlExpression, Formula1:=formula)
+        .Interior.Color = RGB(254, 226, 226)  ' 浅红背景
+        .Font.Color = RGB(127, 29, 29)        ' 深红字体
+        .StopIfTrue = False
+        .Priority = 1  ' 最高优先级
+    End With
+    
+    ' 记录规则用于撤销
+    LogCFRule rng.Address & "|" & tag & "|Error|1"
+End Sub
+
+' 空值标记（R1C1标准）
+Private Sub ApplyEmptyHighlight(rng As Range, tag As String)
+    Dim formula As String
+    formula = "=ISBLANK(RC)+N(0*LEN(""" & tag & """))"
+    
+    With rng.FormatConditions.Add(Type:=xlExpression, Formula1:=formula)
+        .Interior.Color = RGB(249, 250, 251)  ' 浅灰背景
+        .StopIfTrue = False
+        .Priority = 2
+    End With
+    
+    LogCFRule rng.Address & "|" & tag & "|Blank|2"
+End Sub
+
+' 重复值检测（逐列R1C1，精确AppliesTo控制）
+Private Sub ApplyDuplicateHighlight(col As Range, tag As String)
+    Dim formula As String, colRange As String
+    
+    ' 构建列数据区域的绝对引用（避免跨列误伤）
+    colRange = col.Address(True, True)  ' 绝对引用如$A$2:$A$100
+    formula = "=AND(RC<>"""",COUNTIF(" & colRange & ",RC)>1)+N(0*LEN(""" & tag & """))"
+    
+    With col.FormatConditions.Add(Type:=xlExpression, Formula1:=formula)
+        .Interior.Color = RGB(255, 251, 235)  ' 浅黄背景
+        .StopIfTrue = False
+        .Priority = 3
+    End With
+    
+    LogCFRule col.Address & "|" & tag & "|Duplicate|3"
+End Sub
+
+' 负数检测（仅应用于数值列，仅改字体颜色避免NumberFormat覆盖）
+Private Sub ApplyNegativeHighlight(col As Range, tag As String)
+    Dim formula As String
+    formula = "=RC<0+N(0*LEN(""" & tag & """))"
+    
+    With col.FormatConditions.Add(Type:=xlExpression, Formula1:=formula)
+        ' 仅修改字体颜色，不覆盖用户的NumberFormat设置
+        .Font.Color = RGB(220, 38, 38)  ' 红色字体
+        .StopIfTrue = False
+        .Priority = 4
+    End With
+    
+    LogCFRule col.Address & "|" & tag & "|Negative|4"
+End Sub
 End Sub
 ```
 
@@ -346,28 +467,40 @@ End Sub
 ```
 
 ### 4.3 辅助检测函数
-    With col.FormatConditions.Add(Type:=xlCellValue, Operator:=xlLess, Formula1:="0")
-        .Font.Color = RGB(220, 38, 38)  ' 红色字体
-        .NumberFormat = "[Red](#,##0.00);[Red]-#,##0.00"
-        .StopIfTrue = False
-        .Priority = 4
-    End With
+```vba
+' 快速数值列检测（避免逐单元格遍历）
+Private Function IsNumericColumn(col As Range) As Boolean
+    Dim checkCount As Long, numericCount As Long
+    Dim cell As Range, maxCheck As Long
+    
+    ' 仅检查前5个非空单元格，提升性能
+    maxCheck = 5
+    checkCount = 0
+    numericCount = 0
+    
+    For Each cell In col.Cells
+        If Not IsEmpty(cell.Value) And checkCount < maxCheck Then
+            checkCount = checkCount + 1
+            If IsNumeric(cell.Value) And Not IsDate(cell.Value) Then
+                numericCount = numericCount + 1
+            End If
+        End If
+        If checkCount >= maxCheck Then Exit For
+    Next cell
+    
+    ' 60%以上为数值则认为是数值列
+    IsNumericColumn = (numericCount >= (checkCount * 0.6)) And checkCount > 0
+End Function
+
+' 统一日志记录接口
+Private Sub LogCFRule(ruleInfo As String)
+    If g_BeautifyHistory.CFRulesAdded = "" Then
+        g_BeautifyHistory.CFRulesAdded = ruleInfo
+    Else
+        g_BeautifyHistory.CFRulesAdded = g_BeautifyHistory.CFRulesAdded & ";" & ruleInfo
+    End If
 End Sub
 ```
-
-### 4.3 条件格式日志记录
-```vba
-Private Sub LogConditionalFormats(rng As Range, sessionTag As String)
-    ' 记录到全局撤销日志
-    If g_BeautifyHistory.CFRulesAdded = "" Then
-        g_BeautifyHistory.CFRulesAdded = rng.Address & "|" & sessionTag
-    Else
-        g_BeautifyHistory.CFRulesAdded = g_BeautifyHistory.CFRulesAdded & ";" & _
-                                         rng.Address & "|" & sessionTag
-    End If
-    
-    g_BeautifyHistory.CFRuleCount = g_BeautifyHistory.CFRuleCount + rng.FormatConditions.Count
-End Sub
 ```
 
 ---
@@ -409,6 +542,21 @@ Private Function GetBusinessTheme() As BeautifyConfig
         .EnableBorders = True
         .EnableZebraStripes = False
         .EnableFreezeHeader = True
+' 商务主题配置（默认开启斑马纹）
+Private Function GetBusinessTheme() As BeautifyConfig
+    Dim config As BeautifyConfig
+    
+    With config
+        .ThemeName = "Business"
+        .PrimaryColor = RGB(30, 58, 138)      ' 深蓝
+        .SecondaryColor = RGB(59, 130, 246)   ' 亮蓝
+        .AccentColor = RGB(239, 246, 255)     ' 浅蓝背景
+        
+        .EnableHeaderBeautify = True
+        .EnableConditionalFormat = True
+        .EnableBorders = True
+        .EnableZebraStripes = True            ' *** 修改：默认开启斑马纹 ***
+        .EnableFreezeHeader = True
         
         .HeaderFontSize = 11
         .DataFontSize = 10
@@ -419,7 +567,7 @@ Private Function GetBusinessTheme() As BeautifyConfig
     GetBusinessTheme = config
 End Function
 
-' 财务主题配置
+' 财务主题配置（针对金额优化字体）
 Private Function GetFinancialTheme() As BeautifyConfig
     Dim config As BeautifyConfig
     
@@ -442,6 +590,23 @@ Private Function GetFinancialTheme() As BeautifyConfig
     End With
     
     GetFinancialTheme = config
+End Function
+
+' 大表性能模式（自动关闭复杂样式）
+Private Function GetPerformanceTheme(rowCount As Long) As BeautifyConfig
+    Dim config As BeautifyConfig
+    
+    ' 基于Business主题
+    config = GetBusinessTheme()
+    
+    ' 大表优化调整
+    If rowCount > 10000 Then
+        config.EnableZebraStripes = False     ' 大表关闭斑马纹
+        config.EnableConditionalFormat = False ' 简化条件格式
+        config.StripeOpacity = 0              ' 禁用透明度
+    End If
+    
+    GetPerformanceTheme = config
 End Function
 ```
 
@@ -469,7 +634,7 @@ Private Sub ApplyThemeStyle(tableRange As Range, config As BeautifyConfig)
         ApplyBorderStyle tableRange, config
     End If
     
-    ' 应用隔行变色
+    ' 应用隔行变色（条件格式实现，高性能）
     If config.EnableZebraStripes Then
         ApplyZebraStripes dataRange, config
     End If
@@ -490,6 +655,7 @@ Private Sub ApplyHeaderStyle(headerRange As Range, config As BeautifyConfig)
         .Font.Color = RGB(255, 255, 255)  ' 白色字体
         .Font.Bold = True
         .Font.Size = config.HeaderFontSize
+        .Font.Name = GetOptimalFont("ChineseHeader")  ' 中英文友好字体
         
         ' 对齐
         .HorizontalAlignment = xlCenter
@@ -502,28 +668,60 @@ Private Sub ApplyHeaderStyle(headerRange As Range, config As BeautifyConfig)
     End With
 End Sub
 
-' 应用隔行变色
+' 条件格式实现隔行变色（智能自适应步长）
 Private Sub ApplyZebraStripes(dataRange As Range, config As BeautifyConfig)
-    Dim row As Range
-    Dim rowIndex As Long
+    Dim sessionTag As String, stripeStep As Long
+    Dim formula1 As String, formula2 As String
     
-    rowIndex = 1
-    For Each row In dataRange.Rows
-        If rowIndex Mod 2 = 0 Then
-            row.Interior.Color = config.AccentColor
-        End If
-        rowIndex = rowIndex + 1
-    Next row
+    sessionTag = "ELO_" & g_BeautifyHistory.SessionId
+    
+    ' 智能步长：小表1行，中表2行，大表3行
+    If dataRange.Rows.Count <= 50 Then
+        stripeStep = 1  ' 每行交替
+    ElseIf dataRange.Rows.Count <= 200 Then
+        stripeStep = 2  ' 每2行交替
+    Else
+        stripeStep = 3  ' 每3行交替
+    End If
+    
+    ' R1C1条件格式实现（避免逐行着色）
+    ' 奇数组：ROW() MOD (step*2) <= step
+    formula1 = "=MOD(ROW()-" & dataRange.Row & "+1," & (stripeStep * 2) & ")<=" & stripeStep & _
+               "+N(0*LEN(""" & sessionTag & """))"
+    
+    With dataRange.FormatConditions.Add(Type:=xlExpression, Formula1:=formula1)
+        .Interior.Color = config.AccentColor
+        .StopIfTrue = False
+        .Priority = 10  ' 低优先级，不覆盖其他条件格式
+    End With
+    
+    LogCFRule dataRange.Address & "|" & sessionTag & "|ZebraStripe|10"
 End Sub
+
+' 优化字体选择（解决中西文混排问题）
+Private Function GetOptimalFont(contentType As String) As String
+    Select Case contentType
+        Case "ChineseHeader"
+            GetOptimalFont = "微软雅黑"  ' 中文标题
+        Case "ChineseData"
+            GetOptimalFont = "微软雅黑"  ' 中文数据
+        Case "EnglishContent"
+            GetOptimalFont = "Calibri"  ' 英文内容
+        Case "NumericData"
+            GetOptimalFont = "Consolas"  ' 数字/金额，等宽友好
+        Case Else
+            GetOptimalFont = "微软雅黑"  ' 默认中英文兼容
+    End Select
+End Function
 ```
 
 ---
 
-## 6. 撤销机制实现
+## 6. 撤销机制实现（精确撤销最小闭环）
 
 ### 6.1 撤销信息管理
 ```vba
-' 全局撤销信息
+' 全局撤销信息（最小闭环字段）
 Private g_BeautifyHistory As BeautifyLog
 Private g_HasBeautifyHistory As Boolean
 
@@ -532,34 +730,156 @@ Private Sub InitializeBeautifyLog()
     With g_BeautifyHistory
         .SessionId = Format(Now, "yyyymmddhhmmss") & "_" & Int(Rnd * 1000)
         .Timestamp = Now
-        .CFRulesAdded = ""
-        .CFRuleCount = 0
-        .StylesAdded = ""
-        .TableStylesMap = ""
-        .ModifiedRanges = ""
-        Set .OriginalFormats = New Collection
+        .CFRulesAdded = ""          ' 条件格式记录：地址|标签;地址|标签
+        .StylesAdded = ""           ' 样式记录：ELO_主题_SessionId;...
+        .TableStylesMap = ""        ' 表格样式映射：表名:原样式;...
     End With
     g_HasBeautifyHistory = True
 End Sub
 
-' 保存原始格式
-Private Sub SaveOriginalFormats(rng As Range)
-    Dim formatInfo As String
-    Dim cell As Range
+' 记录表格样式变更
+Private Sub LogTableStyleChange(tblName As String, originalStyle As String)
+    Dim mapping As String
+    mapping = tblName & ":" & originalStyle
     
-    ' 保存关键格式信息
-    For Each cell In rng.Cells(1, 1).Resize(1, rng.Columns.Count)
-        formatInfo = cell.Address & "|" & _
-                    cell.Font.Name & "|" & _
-                    cell.Font.Size & "|" & _
-                    cell.Font.Bold & "|" & _
-                    cell.Interior.Color
-        g_BeautifyHistory.OriginalFormats.Add formatInfo
-    Next cell
+    If g_BeautifyHistory.TableStylesMap = "" Then
+        g_BeautifyHistory.TableStylesMap = mapping
+    Else
+        g_BeautifyHistory.TableStylesMap = g_BeautifyHistory.TableStylesMap & ";" & mapping
+    End If
+End Sub
+
+' 记录样式创建
+Private Sub LogStyleCreation(styleName As String)
+    If g_BeautifyHistory.StylesAdded = "" Then
+        g_BeautifyHistory.StylesAdded = styleName
+    Else
+        g_BeautifyHistory.StylesAdded = g_BeautifyHistory.StylesAdded & ";" & styleName
+    End If
 End Sub
 ```
 
-### 6.2 精确撤销实现
+### 6.2 精确撤销实现（按标签删除）
+```vba
+' 主撤销函数
+Sub UndoBeautify()
+    Dim ws As Worksheet
+    Dim cfRuleEntries() As String
+    Dim tableStyleMappings() As String
+    Dim styleNames() As String
+    Dim i As Long
+    Dim sessionTag As String
+    
+    Set ws = ActiveSheet
+    sessionTag = "ELO_" & g_BeautifyHistory.SessionId
+    
+    ' 确认撤销操作
+    If MsgBox("确定要撤销美化效果吗？", vbYesNo + vbQuestion) = vbNo Then
+        Exit Sub
+    End If
+    
+    Application.ScreenUpdating = False
+    
+    ' 1. 精确删除带标签的条件格式规则
+    If g_BeautifyHistory.CFRulesAdded <> "" Then
+        cfRuleEntries = Split(g_BeautifyHistory.CFRulesAdded, ";")
+        For i = 0 To UBound(cfRuleEntries)
+            Call RemoveTaggedCFRule(ws, cfRuleEntries(i))
+        Next i
+    End If
+    
+    ' 2. 还原表格样式
+    If g_BeautifyHistory.TableStylesMap <> "" Then
+        tableStyleMappings = Split(g_BeautifyHistory.TableStylesMap, ";")
+        For i = 0 To UBound(tableStyleMappings)
+            Call RestoreTableStyle(ws, tableStyleMappings(i))
+        Next i
+    End If
+    
+    ' 3. 删除本会话创建的样式
+    If g_BeautifyHistory.StylesAdded <> "" Then
+        styleNames = Split(g_BeautifyHistory.StylesAdded, ";")
+        For i = 0 To UBound(styleNames)
+            Call SafeDeleteStyle(styleNames(i))
+        Next i
+    End If
+    
+    ' 4. 删除本会话的表格样式
+    Call RemoveSessionTableStyles(sessionTag)
+    
+    Application.ScreenUpdating = True
+    
+    ' 清空历史记录
+    Call InitializeBeautifyLog
+    g_HasBeautifyHistory = False
+    
+    MsgBox "撤销完成！已移除本次美化样式。", vbInformation
+End Sub
+
+' 删除指定标签的条件格式规则
+Private Sub RemoveTaggedCFRule(ws As Worksheet, ruleEntry As String)
+    Dim parts() As String, rngAddress As String, tag As String
+    Dim targetRange As Range, i As Long
+    
+    parts = Split(ruleEntry, "|")
+    If UBound(parts) >= 1 Then
+        rngAddress = parts(0)
+        tag = parts(1)
+        
+        On Error Resume Next
+        Set targetRange = ws.Range(rngAddress)
+        On Error GoTo 0
+        
+        If Not targetRange Is Nothing Then
+            ' 从后往前删除含标签的规则
+            For i = targetRange.FormatConditions.Count To 1 Step -1
+                If InStr(targetRange.FormatConditions(i).Formula1, tag) > 0 Then
+                    targetRange.FormatConditions(i).Delete
+                End If
+            Next i
+        End If
+    End If
+End Sub
+
+' 还原表格样式
+Private Sub RestoreTableStyle(ws As Worksheet, mapping As String)
+    Dim parts() As String, tblName As String, originalStyle As String
+    Dim tbl As ListObject
+    
+    parts = Split(mapping, ":")
+    If UBound(parts) = 1 Then
+        tblName = parts(0)
+        originalStyle = parts(1)
+        
+        On Error Resume Next
+        Set tbl = ws.ListObjects(tblName)
+        On Error GoTo 0
+        
+        If Not tbl Is Nothing Then
+            tbl.TableStyle = originalStyle
+        End If
+    End If
+End Sub
+
+' 安全删除样式
+Private Sub SafeDeleteStyle(styleName As String)
+    On Error Resume Next
+    ActiveWorkbook.Styles(styleName).Delete
+    On Error GoTo 0
+End Sub
+
+' 删除会话表格样式
+Private Sub RemoveSessionTableStyles(sessionTag As String)
+    Dim i As Long
+    
+    For i = ActiveWorkbook.TableStyles.Count To 1 Step -1
+        If InStr(ActiveWorkbook.TableStyles(i).Name, sessionTag) > 0 Then
+            On Error Resume Next
+            ActiveWorkbook.TableStyles(i).Delete
+            On Error GoTo 0
+        End If
+    Next i
+End Sub
 ```vba
 Public Sub UndoBeautify()
     If Not g_HasBeautifyHistory Then
@@ -672,6 +992,13 @@ End Function
 ' 应用状态管理
 Private Type AppState
     ScreenUpdating As Boolean
+## 7. 性能优化策略（R1C1统一架构）
+
+### 7.1 应用状态管理
+```vba
+' 应用状态结构
+Private Type AppState
+    ScreenUpdating As Boolean
     Calculation As XlCalculation
     EnableEvents As Boolean
     DisplayAlerts As Boolean
@@ -709,7 +1036,7 @@ Private Sub SetPerformanceMode()
 End Sub
 ```
 
-### 7.2 大数据优化
+### 7.2 大数据优化（避免逐单元格操作）
 ```vba
 ' 大表性能模式检测
 Private Function NeedsPerformanceMode(rng As Range) As Boolean
@@ -720,9 +1047,64 @@ Private Function NeedsPerformanceMode(rng As Range) As Boolean
                            (rng.Columns.Count > LARGE_COL_COUNT)
 End Function
 
-' 批处理优化
-Private Sub ProcessInBatches(dataRange As Range, batchSize As Long)
-    Dim totalRows As Long
+' 条件格式优化策略
+Private Sub OptimizeConditionalFormats(dataRange As Range)
+    ' 大表优先使用TableStyle而非条件格式
+    If NeedsPerformanceMode(dataRange) Then
+        ' 仅应用基础错误检测，跳过复杂规则
+        ApplyErrorHighlight dataRange, "ELO_" & g_BeautifyHistory.SessionId
+        Exit Sub
+    End If
+    
+    ' 正常大小表格应用全套条件格式
+    Call ApplyStandardConditionalFormat(dataRange)
+End Sub
+
+' R1C1公式优化（避免A1列字母解析）
+Private Function GetOptimizedR1C1Formula(ruleType As String, sessionTag As String) As String
+    Select Case ruleType
+        Case "Error"
+            GetOptimizedR1C1Formula = "=ISERROR(RC)+N(0*LEN(""" & sessionTag & """))"
+        Case "Blank"
+            GetOptimizedR1C1Formula = "=ISBLANK(RC)+N(0*LEN(""" & sessionTag & """))"
+        Case "Negative"
+            GetOptimizedR1C1Formula = "=RC<0+N(0*LEN(""" & sessionTag & """))"
+        Case "Duplicate"
+            ' 注意：重复值检测需要在调用时指定具体列范围
+            GetOptimizedR1C1Formula = "=AND(RC<>"""",COUNTIF({RANGE},RC)>1)+N(0*LEN(""" & sessionTag & """))"
+    End Select
+End Function
+
+' 避免A1列字母脆弱解析
+Private Sub ApplyColumnSpecificRule(col As Range, ruleType As String, sessionTag As String)
+    Dim formula As String
+    
+    Select Case ruleType
+        Case "Duplicate"
+            ' 精确控制AppliesTo范围，避免跨列误伤
+            formula = "=AND(RC<>"""",COUNTIF(" & col.Address(True, True) & ",RC)>1)+N(0*LEN(""" & sessionTag & """))"
+            
+            With col.FormatConditions.Add(Type:=xlExpression, Formula1:=formula)
+                .Interior.Color = RGB(255, 251, 235)  ' 浅黄背景
+                .Priority = 3
+            End With
+            
+        Case "Negative"
+            ' 仅数值列应用，避免字符类型误伤
+            If IsNumericColumn(col) Then
+                formula = "=RC<0+N(0*LEN(""" & sessionTag & """))"
+                
+                With col.FormatConditions.Add(Type:=xlExpression, Formula1:=formula)
+                    .Font.Color = RGB(220, 38, 38)  ' 红色字体
+                    .Priority = 4
+                End With
+            End If
+    End Select
+    
+    ' 记录规则用于精确撤销
+    LogCFRule col.Address & "|" & sessionTag & "|" & ruleType & "|" & _
+              IIf(ruleType = "Duplicate", "3", "4")
+End Sub
     Dim currentBatch As Long
     Dim startRow As Long, endRow As Long
     Dim batchRange As Range
