@@ -1,5 +1,7 @@
 # Excel表格快速美化系统 v4.2 (极简部署版)
 
+> **⚠️ R1C1架构说明**：本系统统一采用R1C1引用风格进行内部解析和执行，所有条件格式公式均为R1C1格式。用户界面仍显示A1风格，但系统内部统一R1C1处理。
+
 ## 1. 项目概述
 
 ### 1.1 项目背景
@@ -91,8 +93,6 @@ End Function
 
 ### 2.2 条件格式智能应用
 
-> **🔧 系统架构说明**：本系统统一使用 R1C1 引用风格，文中所有公式均按 R1C1 解析执行。
-
 #### 2.2.1 标准条件格式规则
 **功能描述**：应用最常用的条件格式规则
 
@@ -112,6 +112,10 @@ Sub ApplyStandardConditionalFormat(dataRange As Range)
     Dim prevStyle As XlReferenceStyle
     prevStyle = Application.ReferenceStyle
     Application.ReferenceStyle = xlR1C1
+    
+    On Error GoTo ErrorHandler
+    Application.EnableEvents = False
+    Application.ScreenUpdating = False
     
     ' 预清理同标签规则，确保幂等性
     ClearTaggedRules dataRange, sessionTag
@@ -135,6 +139,9 @@ Sub ApplyStandardConditionalFormat(dataRange As Range)
     ' 逐列应用重复值和负数检测
     Dim col As Range
     For Each col In dataRange.Columns
+        ' 逐列预清理，确保多次运行的幂等性
+        ClearTaggedRules col, sessionTag
+        
         ' 重复值检测（R1C1列相对引用）
         With col.FormatConditions.Add(xlExpression, , "=AND(RC<>"""",COUNTIF(C[0],RC)>1)+N(0*LEN(""" & sessionTag & """))")
             .Interior.Color = RGB(255, 251, 235)  ' 浅黄色
@@ -154,8 +161,17 @@ Sub ApplyStandardConditionalFormat(dataRange As Range)
         End If
     Next col
     
+CleanUp:
     ' *** 恢复原始引用风格 ***
     Application.ReferenceStyle = prevStyle
+    Application.EnableEvents = True
+    Application.ScreenUpdating = True
+    Exit Sub
+    
+ErrorHandler:
+    Application.ReferenceStyle = prevStyle  ' 错误时也恢复
+    MsgBox "条件格式应用失败: " & Err.Description, vbExclamation
+    Resume CleanUp
 End Sub
 ```
 
@@ -338,16 +354,18 @@ NegativeFormats = Array( _
 #### 2.4.1 隔行变色斑马条纹 ⭐ (用户需求)
 **功能描述**：为表格添加隔行背景色，提升可读性
 
-**智能条纹规则**：
+**智能条纹规则（R1C1格式）**：
 - **自适应模式**：
   - 小表格（<50行）：每行交替
   - 中表格（50-200行）：每2行交替
   - 大表格（>200行）：每3行交替
 
-- **分组条纹**：
-  - 检测分组字段
-  - 同组内使用相同背景
-  - 组间交替变色
+**R1C1条件格式公式**：
+```vba
+' 隔行变色公式（R1C1格式）
+formula = "=MOD(ROW()-" & dataRange.Row & "+1," & (stripeStep * 2) & ")<=" & stripeStep & _
+          "+N(0*LEN(""" & sessionTag & """))"
+```
 
 **配色方案详细参数**：
 ```
@@ -1102,21 +1120,15 @@ Private Sub UpdateLearningModel(userAction As UserAction)
 Private Function DetectTableRange() As Range
 Private Function AnalyzeDataTypes(range As Range) As DataTypeAnalysis
 Private Function CalculateColorHarmony(color1 As Long, color2 As Long) As Double
-Private Function GenerateSmartRecommendations(context As TableContext) As Collection
 Private Function ValidateDesignConsistency(range As Range) As ConsistencyReport
 Private Function OptimizeForAccessibility(range As Range) As AccessibilityReport
 
-' ===== 机器学习与个性化 =====
-Private Sub LearnFromUserChoices(choice As UserChoice)
-Private Function PredictUserPreference(context As TableContext) As Prediction
-Private Sub UpdatePersonalizationModel(feedback As UserFeedback)
-Private Function GetPersonalizedRecommendations(userProfile As UserProfile) As Collection
-
 ' ===== 性能与质量保证 =====
-Private Sub EnableIntelligentMode()
+Private Sub EnablePerformanceMode()
 Private Sub OptimizeForLargeDataSets(rowCount As Long)
-Private Function ValidateIntelligentResult(result As BeautificationResult) As Boolean
-Private Sub LogIntelligentOperation(operation As IntelligentOperation)
+Private Function ValidateBeautificationResult(result As BeautificationResult) As Boolean
+Private Sub LogBeautificationOperation(operation As BeautificationOperation)
+```
 ```
 
 ### 3.3 与现有系统集成
@@ -1917,51 +1929,6 @@ ExcelLayoutOptimizer_v4.1/
 | E004 | 主题文件损坏 | 重新下载主题文件 |
 | E005 | 版本不兼容 | 升级Excel或使用兼容模式 |
 
-## 10. 智能设计系统核心价值总结
-
-### 10.1 革命性突破
-
-**从模板到智能**：我们的系统实现了从静态模板应用到动态智能设计的根本性转变。用户不再需要在有限的预设主题中选择，而是拥有了一个真正理解设计原理的智能伙伴。
-
-**三大核心突破**：
-
-1. **设计智能 (Design Intelligence)**
-   - 🎨 **智能配色**：一键输入品牌色，系统基于色彩理论生成完整和谐配色方案
-   - 📝 **字体层次**：自动构建专业的排版层次，确保信息传达的清晰度
-   - 🎯 **风格匹配**：不仅仅是颜色和字体，更是完整的设计语言和视觉规范
-
-2. **上下文感知 (Context-Aware)**
-   - 🧠 **语义理解**：系统能"读懂"表格内容，识别汇总行、KPI列、时间序列等
-   - 📊 **数据叙事**：自动创建差异分析、目标可视化等数据故事元素
-   - 💡 **智能建议**：基于业务逻辑提供个性化的美化建议
-
-3. **流畅工作流 (Streamlined Workflow)**
-   - 🎪 **引导向导**：5步智能向导，零基础用户也能创造专业级表格
-   - 📋 **质量报告**：专业度评分和改进建议，让每个用户都成为设计专家
-   - 🎓 **持续学习**：系统学习用户偏好，提供个性化的设计体验
-
-### 10.2 核心竞争优势
-
-**1. 智能化程度领先**
-- 业界首创的表格语义分析技术
-- 基于色彩理论的自动配色算法
-- AI驱动的个性化推荐系统
-
-**2. 专业性与易用性完美结合**
-- 无需设计背景，人人都能创造专业级表格
-- 遵循国际设计标准和可访问性规范
-- 支持企业VI规范的自动适配
-
-**3. 深度业务理解**
-- 不仅美化外观，更增强数据洞察力
-- 自动识别业务模式并提供相应的可视化
-- 支持财务、销售、人事等多领域专业需求
-
-### 10.3 用户价值体现
-
-**效率革命**：
-- 传统美化：2-3小时手动调整
-- 智能美化：2-3分钟完成专业级效果
 ### 5.2 核心价值总结
 
 **极简高效**：
@@ -1977,11 +1944,29 @@ ExcelLayoutOptimizer_v4.1/
 **专业实用**：
 - 商务级美化效果
 - 适配各种表格场景
-- 零学习成本
+- 零学习成心
+
+### 5.3 技术架构核心要点
+
+**R1C1统一架构**：
+- 系统内部统一使用R1C1引用风格进行解析
+- 避免列字母解析的脆弱性，支持跨列区域操作
+- 所有条件格式公式均为R1C1格式，确保稳定性
+
+**精确撤销机制**：
+- 基于会话标签的条件格式精确删除
+- 最小闭环字段设计，仅保留必要的撤销信息
+- 保护用户既有格式，仅清理本次美化内容
+
+**性能优化策略**：
+- 逐列预清理确保幂等性，支持重复运行
+- 大表性能模式自动简化复杂样式
+- 批量操作和状态管理提升处理效率
 
 ---
 
 **文档版本**：v4.2 (极简部署版)  
 **创建日期**：2024年12月29日  
 **极简重构**：2025年8月29日  
-**设计理念**：部署即用，专注核心价值
+**最终修订**：2025年9月3日（R1C1统一架构）  
+**设计理念**：部署即用，专注核心价值，技术架构稳定可靠

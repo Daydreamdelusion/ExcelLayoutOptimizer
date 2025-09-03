@@ -20,7 +20,7 @@
    - 撤销时按标签匹配，确保不影响用户原有格式
 
 4. **高性能斑马纹实现** ✅
-   - 使用条件格式替代逐行着色：MOD(ROW()-起始行+1,步长*2)<=步长
+   - 使用条件格式替代逐行着色：`=MOD(ROW()-(起始行)+1,步长*2)<=步长`（R1C1格式）
    - 智能自适应步长：小表1行、中表2行、大表3行
    - 支持分组条纹逻辑
 
@@ -712,6 +712,11 @@ Private Sub ApplyZebraStripes(dataRange As Range, config As BeautifyConfig)
     ' *** 统一会话标签 ***
     sessionTag = GetSessionTag()
     
+    ' *** 关键：R1C1引用风格切换保护 ***
+    Dim prevStyle As XlReferenceStyle
+    prevStyle = Application.ReferenceStyle
+    Application.ReferenceStyle = xlR1C1
+    
     ' 智能步长：小表1行，中表2行，大表3行
     If dataRange.Rows.Count <= 50 Then
         stripeStep = 1  ' 每行交替
@@ -721,8 +726,8 @@ Private Sub ApplyZebraStripes(dataRange As Range, config As BeautifyConfig)
         stripeStep = 3  ' 每3行交替
     End If
     
-    ' *** 单条条件格式实现斑马纹（可维护性强）***
-    ' 公式：偶数行/组高亮
+    ' *** 单条条件格式实现斑马纹（R1C1格式）***
+    ' 使用R1C1相对引用，避免固定行号依赖
     formula = "=MOD(ROW()-" & dataRange.Row & "+1," & (stripeStep * 2) & ")<=" & stripeStep & _
               "+N(0*LEN(""" & sessionTag & """))"
     
@@ -731,6 +736,9 @@ Private Sub ApplyZebraStripes(dataRange As Range, config As BeautifyConfig)
         .StopIfTrue = False
         .Priority = 10  ' 低优先级，不覆盖其他条件格式
     End With
+    
+    ' *** 恢复原始引用风格 ***
+    Application.ReferenceStyle = prevStyle
     
     ' *** 统一两段式日志记录 ***
     LogCFRule dataRange.Address & "|" & sessionTag
