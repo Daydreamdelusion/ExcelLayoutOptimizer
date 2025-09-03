@@ -94,13 +94,34 @@ End Function
 ### 2.2 条件格式智能应用
 
 #### 2.2.1 标准条件格式规则
-**功能描述**：应用最常用的条件格式规则
+**功能描述**：应用最常用的条件格式规则，采用优先级终止逻辑避免格式冲突
 
 **内置规则（R1C1相对引用格式）**：
-1. **负数标红**：`=RC<0+N(0*LEN("ELO_TAG"))` - 红色字体突出负数
-2. **重复值标黄**：`=AND(RC<>"",COUNTIF(C[0],RC)>1)+N(0*LEN("ELO_TAG"))` - 黄色背景标记重复
-3. **空值标灰**：`=ISBLANK(RC)+N(0*LEN("ELO_TAG"))` - 灰色背景提醒空值
-4. **错误标红**：`=ISERROR(RC)+N(0*LEN("ELO_TAG"))` - 红色背景标记错误
+1. **错误值标红**：`=ISERROR(RC)+N(0*LEN("ELO_TAG"))` - 红色背景标记错误
+   - **优先级**：1（最高）
+   - **终止逻辑**：`StopIfTrue = True`（错误值无需再判断其他条件）
+
+2. **空值标灰**：`=ISBLANK(RC)+N(0*LEN("ELO_TAG"))` - 灰色背景提醒空值
+   - **优先级**：2
+   - **终止逻辑**：`StopIfTrue = True`（空值无需再判断重复或负数）
+
+3. **重复值标黄**：`=AND(RC<>"",COUNTIF(C[0],RC)>1)+N(0*LEN("ELO_TAG"))` - 黄色背景标记重复
+   - **优先级**：3
+   - **终止逻辑**：`StopIfTrue = False`（允许与负数规则叠加）
+
+4. **负数标红**：`=RC<0+N(0*LEN("ELO_TAG"))` - 红色字体突出负数
+   - **优先级**：4（最低）
+   - **终止逻辑**：`StopIfTrue = False`（仅设置字体颜色，可与其他背景色叠加）
+
+**逻辑覆盖关系说明**：
+- **错误优先原则**：单元格出错时，其他判断失去意义，直接终止
+- **空值次优原则**：确认为空后，无需判断重复性或数值特征
+- **叠加显示原则**：非空的负数可以同时显示重复标记（黄底）和负数标记（红字）
+
+**性能优化效果**：
+- **计算减少**：错误值和空值终止后续规则，避免无效计算
+- **大表优化**：在包含大量空值或错误的表格中，性能提升显著
+- **规则冲突消除**：明确的优先级避免用户困惑的混合颜色效果
 
 **应用策略**：
 ```vba
@@ -120,19 +141,20 @@ Sub ApplyStandardConditionalFormat(dataRange As Range)
     ' 预清理同标签规则，确保幂等性
     ClearTaggedRules dataRange, sessionTag
     
-    ' 错误值检测（优先级最高）- R1C1相对引用
+    ' 1. 错误值检测（优先级1，终止后续判断）
     With dataRange.FormatConditions.Add(xlExpression, , "=ISERROR(RC)+N(0*LEN(""" & sessionTag & """))")
         .Interior.Color = RGB(254, 226, 226)  ' 浅红背景
+        .Font.Color = RGB(127, 29, 29)        ' 深红字体
         .Priority = 1
-        .StopIfTrue = False
+        .StopIfTrue = True  ' *** 错误值终止后续判断 ***
     End With
     LogCFRule dataRange.Address & "|" & sessionTag
     
-    ' 空值标记 - R1C1相对引用
+    ' 2. 空值标记（优先级2，终止后续判断）
     With dataRange.FormatConditions.Add(xlExpression, , "=ISBLANK(RC)+N(0*LEN(""" & sessionTag & """))")
         .Interior.Color = RGB(249, 250, 251)  ' 浅灰背景
         .Priority = 2
-        .StopIfTrue = False
+        .StopIfTrue = True  ' *** 空值终止后续判断 ***
     End With
     LogCFRule dataRange.Address & "|" & sessionTag
     
@@ -142,20 +164,20 @@ Sub ApplyStandardConditionalFormat(dataRange As Range)
         ' 逐列预清理，确保多次运行的幂等性
         ClearTaggedRules col, sessionTag
         
-        ' 重复值检测（R1C1列相对引用）
+        ' 3. 重复值检测（优先级3，允许叠加）
         With col.FormatConditions.Add(xlExpression, , "=AND(RC<>"""",COUNTIF(C[0],RC)>1)+N(0*LEN(""" & sessionTag & """))")
             .Interior.Color = RGB(255, 251, 235)  ' 浅黄色
             .Priority = 3
-            .StopIfTrue = False
+            .StopIfTrue = False  ' *** 允许与负数规则叠加 ***
         End With
         LogCFRule col.Address & "|" & sessionTag
         
-        ' 负数检测（仅数值列，仅字体颜色）
+        ' 4. 负数检测（优先级4，仅字体颜色，允许叠加）
         If IsNumericColumn(col) Then
             With col.FormatConditions.Add(xlExpression, , "=RC<0+N(0*LEN(""" & sessionTag & """))")
                 .Font.Color = RGB(220, 38, 38)  ' 红色字体
                 .Priority = 4
-                .StopIfTrue = False
+                .StopIfTrue = False  ' *** 仅设字体色，可叠加背景色 ***
             End With
             LogCFRule col.Address & "|" & sessionTag
         End If
@@ -178,36 +200,59 @@ End Sub
 ### 2.3 表格边框和样式
 
 #### 2.3.1 专业边框设置
-**功能描述**：应用统一的专业边框样式
+**功能描述**：应用统一的专业边框样式，采用分层颜色设计增强视觉层次
 
-**边框规范**：
-- **外边框**：粗线（xlThick）
-- **内边框**：细线（xlThin）
-- **表头分割**：底部双线
-- **颜色**：深灰色 (#4B5563)
+**边框规范（分层设计）**：
+- **外边框**：粗线（xlThick），深灰色 RGB(75, 85, 99)
+- **内边框**：细线（xlThin），浅灰色 RGB(209, 213, 219)
+- **表头分割**：双线（xlDouble）或粗线，主色调深色变体
+- **颜色层次**：外框→内框形成深→浅的视觉递减，增强立体感
+
+**表头强化分隔**：
+- **底部边框样式**：双线（xlDouble）或保持粗线
+- **颜色选择**：主色调的深色变体（如商务蓝的深色版本）
+- **视觉效果**：明确区分表头与数据区域
 
 ```vba
-Sub ApplyProfessionalBorders(tableRange As Range)
+Sub ApplyProfessionalBorders(tableRange As Range, headerRange As Range)
+    ' === 数据区域边框（分层颜色） ===
     With tableRange.Borders
         .LineStyle = xlContinuous
         .Weight = xlThin
-        .Color = RGB(75, 85, 99)
+        .Color = RGB(209, 213, 219)  ' 内部网格：浅灰色
     End With
     
-    ' 外边框加粗
-    With tableRange.Borders(xlEdgeLeft)
-        .Weight = xlThick
-    End With
-    With tableRange.Borders(xlEdgeRight)
-        .Weight = xlThick
-    End With
-    With tableRange.Borders(xlEdgeTop)
-        .Weight = xlThick
-    End With
-    With tableRange.Borders(xlEdgeBottom)
-        .Weight = xlThick
-    End With
+    ' === 外边框加粗（深色） ===
+    Dim outerBorders As Variant
+    outerBorders = Array(xlEdgeLeft, xlEdgeRight, xlEdgeTop, xlEdgeBottom)
+    
+    Dim i As Long
+    For i = 0 To UBound(outerBorders)
+        With tableRange.Borders(outerBorders(i))
+            .Weight = xlThick
+            .Color = RGB(75, 85, 99)    ' 外边框：深灰色
+            .LineStyle = xlContinuous
+        End With
+    Next i
+    
+    ' === 表头底部强化分隔 ===
+    If Not headerRange Is Nothing Then
+        With headerRange.Borders(xlEdgeBottom)
+            .LineStyle = xlDouble        ' 双线样式
+            .Weight = xlThick
+            .Color = RGB(30, 58, 138)    ' 主色调深色变体（深蓝）
+        End With
+    End If
 End Sub
+```
+
+**视觉层次效果**：
+```
+表头区域：深蓝双线底边框（强分隔）
+    ↓
+数据区域：浅灰细线网格（柔和内分）
+    ↓
+整体边框：深灰粗线外框（明确边界）
 ```
 
 - **字体优化详细参数**：

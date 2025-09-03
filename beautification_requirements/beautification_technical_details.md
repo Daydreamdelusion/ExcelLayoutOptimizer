@@ -1,8 +1,8 @@
 # Excel表格美化系统 - 技术实现明细 v2.0
 
-## 🔄 v2.0 重要变更说明（2025-09-03）
+## 🔄 v2.1 重要变更说明（2025-09-03）
 
-**基于用户反馈的8项关键优化**：
+**基于用户反馈的10项关键优化**：
 
 1. **统一R1C1架构** ✅
    - 删除所有A1变体实现，统一使用R1C1相对引用
@@ -42,6 +42,16 @@
 8. **统一日志接口** ✅
    - LogCFRule()统一记录格式：地址|标签（两段式）
    - 删除分叉的日志记录方式，确保撤销一致性
+
+9. **条件格式终止逻辑优化** 🆕
+   - 错误值(优先级1)和空值(优先级2)设置StopIfTrue=True
+   - 避免无效的规则叠加计算，提升大表性能
+   - 重复值和负数保持StopIfTrue=False，允许合理叠加
+
+10. **分层边框颜色设计** 🆕
+    - 外边框：深灰色RGB(75,85,99)，内边框：浅灰色RGB(209,213,219)
+    - 表头底部：双线样式+主色调深色变体，强化分隔感
+    - 形成深→浅的视觉层次，增强专业感
 
 ---
 
@@ -363,10 +373,10 @@ Private Sub ApplyStandardConditionalFormat(dataRange As Range)
     ClearTaggedRules dataRange, sessionTag
     
     ' 统一优先级顺序（R1C1相对引用）
-    ' 1. 错误值检测（优先级1）
+    ' 1. 错误值检测（优先级1，终止后续判断）
     ApplyErrorHighlight dataRange, sessionTag
     
-    ' 2. 空值标记（优先级2）  
+    ' 2. 空值标记（优先级2，终止后续判断）  
     ApplyEmptyHighlight dataRange, sessionTag
     
     ' 3. 逐列应用重复值检测（精确范围控制，逐列预清理确保幂等性）
@@ -419,7 +429,7 @@ End Sub
 
 ### 4.2 R1C1相对引用规则实现（真正的R1C1统一）
 ```vba
-' 错误值高亮（纯R1C1，无A1解析）
+' 错误值高亮（纯R1C1，优先级1，终止后续）
 Private Sub ApplyErrorHighlight(rng As Range, tag As String)
     Dim formula As String
     formula = "=ISERROR(RC)+N(0*LEN(""" & tag & """))"
@@ -427,7 +437,7 @@ Private Sub ApplyErrorHighlight(rng As Range, tag As String)
     With rng.FormatConditions.Add(Type:=xlExpression, Formula1:=formula)
         .Interior.Color = RGB(254, 226, 226)  ' 浅红背景
         .Font.Color = RGB(127, 29, 29)        ' 深红字体
-        .StopIfTrue = False
+        .StopIfTrue = True                    ' *** 错误值终止后续判断 ***
         .Priority = 1  ' 最高优先级
     End With
     
@@ -435,18 +445,51 @@ Private Sub ApplyErrorHighlight(rng As Range, tag As String)
     LogCFRule rng.Address & "|" & tag
 End Sub
 
-' 空值标记（纯R1C1，无A1解析）
+' 空值标记（纯R1C1，优先级2，终止后续）
 Private Sub ApplyEmptyHighlight(rng As Range, tag As String)
     Dim formula As String
     formula = "=ISBLANK(RC)+N(0*LEN(""" & tag & """))"
     
     With rng.FormatConditions.Add(Type:=xlExpression, Formula1:=formula)
         .Interior.Color = RGB(249, 250, 251)  ' 浅灰背景
-        .StopIfTrue = False
+        .StopIfTrue = True                    ' *** 空值终止后续判断 ***
         .Priority = 2
     End With
     
     LogCFRule rng.Address & "|" & tag
+End Sub
+
+' 重复值检测（R1C1列相对引用，优先级3，允许叠加）
+Private Sub ApplyDuplicateHighlight(col As Range, tag As String)
+    Dim formula As String
+    
+    ' *** 关键修正：使用R1C1列相对引用 C[0]，避免Address解析 ***
+    formula = "=AND(RC<>"""",COUNTIF(C[0],RC)>1)+N(0*LEN(""" & tag & """))"
+    
+    ' 精确控制AppliesTo到当前列
+    With col.FormatConditions.Add(Type:=xlExpression, Formula1:=formula)
+        .Interior.Color = RGB(255, 251, 235)  ' 浅黄背景
+        .StopIfTrue = False                   ' *** 允许与负数规则叠加 ***
+        .Priority = 3
+    End With
+    
+    LogCFRule col.Address & "|" & tag
+End Sub
+
+' 负数检测（仅表达式+字体颜色，优先级4，允许叠加）
+Private Sub ApplyNegativeHighlight(col As Range, tag As String)
+    Dim formula As String
+    formula = "=RC<0+N(0*LEN(""" & tag & """))"
+    
+    ' *** 关键修正：仅设字体颜色，保护用户NumberFormat ***
+    With col.FormatConditions.Add(Type:=xlExpression, Formula1:=formula)
+        .Font.Color = RGB(220, 38, 38)       ' 红色字体
+        .StopIfTrue = False                   ' *** 仅设字体色，可叠加背景色 ***
+        .Priority = 4
+        ' *** 不设置NumberFormat，保护用户小数位/千分位设置 ***
+    End With
+    
+    LogCFRule col.Address & "|" & tag
 End Sub
 
 ' 重复值检测（R1C1列相对引用，避免列字母解析）
@@ -639,7 +682,7 @@ Private Sub ApplyThemeStyle(tableRange As Range, config As BeautifyConfig)
     
     ' 应用边框
     If config.EnableBorders Then
-        ApplyBorderStyle tableRange, config
+        ApplyBorderStyle tableRange, headerRange, config
     End If
     
     ' 应用隔行变色（条件格式实现，高性能）
@@ -665,6 +708,38 @@ Private Sub FreezeHeader(headerRange As Range)
     ActiveWindow.FreezePanes = True
     
     On Error GoTo 0
+End Sub
+
+' 分层边框样式应用（强化表头分隔，细化颜色层次）
+Private Sub ApplyBorderStyle(tableRange As Range, headerRange As Range, config As BeautifyConfig)
+    ' === 数据区域边框（浅色内部网格） ===
+    With tableRange.Borders
+        .LineStyle = xlContinuous
+        .Weight = xlThin
+        .Color = RGB(209, 213, 219)  ' 内部网格：浅灰色，柔和分隔
+    End With
+    
+    ' === 外边框加粗（深色边界） ===
+    Dim outerBorders As Variant
+    outerBorders = Array(xlEdgeLeft, xlEdgeRight, xlEdgeTop, xlEdgeBottom)
+    
+    Dim i As Long
+    For i = 0 To UBound(outerBorders)
+        With tableRange.Borders(outerBorders(i))
+            .Weight = xlThick
+            .Color = RGB(75, 85, 99)     ' 外边框：深灰色，明确边界
+            .LineStyle = xlContinuous
+        End With
+    Next i
+    
+    ' === 表头底部强化分隔（双线+主色调深色） ===
+    If Not headerRange Is Nothing Then
+        With headerRange.Borders(xlEdgeBottom)
+            .LineStyle = xlDouble         ' 双线样式，增强分隔感
+            .Weight = xlThick
+            .Color = RGB(30, 58, 138)     ' 主色调深色变体（深蓝），呼应主题
+        End With
+    End If
 End Sub
 
 ' 应用表头样式（商务蓝渐变）
