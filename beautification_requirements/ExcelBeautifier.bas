@@ -98,8 +98,8 @@ Private Enum BeautifyError
 End Enum
 
 ' ===== 全局变量 =====
-Private g_BeautifyHistory As BeautifyLog
-Private g_HasBeautifyHistory As Boolean
+' 多步撤销操作堆栈
+Private g_UndoStack As Collection
 
 ' =============================================================================
 ' 公共API接口
@@ -128,8 +128,8 @@ Public Sub BeautifyTable()
     ' 初始化撤销日志
     Call InitializeBeautifyLog()
     
-    ' 获取主题配置（使用默认商务主题）
-    config = GetThemeConfig("Business")
+    ' 获取默认配置（商务主题）
+    config = GetBusinessTheme()
     
     ' 分析表格结构
     Dim analysis As TableAnalysis
@@ -158,9 +158,10 @@ CleanUp:
     Call RestoreAppState(originalState)
 End Sub
 
-' 撤销函数 - 精确撤销美化效果
+' 撤销函数 - 支持多步撤销的堆栈机制
 Public Sub UndoBeautify()
     Dim ws As Worksheet
+    Dim historyLog As BeautifyLog
     Dim cfRuleEntries() As String
     Dim tableStyleMappings() As String
     Dim styleNames() As String
@@ -170,16 +171,27 @@ Public Sub UndoBeautify()
     
     On Error GoTo ErrorHandler
     
-    If Not g_HasBeautifyHistory Then
+    ' 初始化堆栈（如果未初始化）
+    If g_UndoStack Is Nothing Then
+        Set g_UndoStack = New Collection
+    End If
+    
+    ' 检查是否有可撤销的操作
+    If g_UndoStack.Count = 0 Then
         MsgBox "没有可撤销的美化操作", vbInformation, "Excel美化工具"
         Exit Sub
     End If
     
+    ' 从堆栈顶部获取最近的操作记录
+    Set historyLog = g_UndoStack(g_UndoStack.Count)
     Set ws = ActiveSheet
-    sessionTag = "ELO_" & g_BeautifyHistory.SessionId
+    sessionTag = "ELO_" & historyLog.SessionId
     
     ' 确认撤销操作
-    If MsgBox("确定要撤销美化效果吗？", vbYesNo + vbQuestion, "Excel美化工具") = vbNo Then
+    If MsgBox("确定要撤销最近的美化操作吗？" & vbCrLf & _
+              "操作时间：" & historyLog.Timestamp & vbCrLf & _
+              "剩余可撤销操作：" & (g_UndoStack.Count - 1), _
+              vbYesNo + vbQuestion, "Excel美化工具") = vbNo Then
         Exit Sub
     End If
     
@@ -188,24 +200,24 @@ Public Sub UndoBeautify()
     Call SetPerformanceMode()
     
     ' 1. 精确删除带标签的条件格式规则
-    If g_BeautifyHistory.CFRulesAdded <> "" Then
-        cfRuleEntries = Split(g_BeautifyHistory.CFRulesAdded, ";")
+    If historyLog.CFRulesAdded <> "" Then
+        cfRuleEntries = Split(historyLog.CFRulesAdded, ";")
         For i = 0 To UBound(cfRuleEntries)
             Call RemoveTaggedCFRule(ws, cfRuleEntries(i))
         Next i
     End If
     
     ' 2. 还原表格样式
-    If g_BeautifyHistory.TableStylesMap <> "" Then
-        tableStyleMappings = Split(g_BeautifyHistory.TableStylesMap, ";")
+    If historyLog.TableStylesMap <> "" Then
+        tableStyleMappings = Split(historyLog.TableStylesMap, ";")
         For i = 0 To UBound(tableStyleMappings)
             Call RestoreTableStyle(ws, tableStyleMappings(i))
         Next i
     End If
     
     ' 3. 删除本会话创建的样式
-    If g_BeautifyHistory.StylesAdded <> "" Then
-        styleNames = Split(g_BeautifyHistory.StylesAdded, ";")
+    If historyLog.StylesAdded <> "" Then
+        styleNames = Split(historyLog.StylesAdded, ";")
         For i = 0 To UBound(styleNames)
             Call SafeDeleteStyle(styleNames(i))
         Next i
@@ -217,14 +229,47 @@ Public Sub UndoBeautify()
     ' 恢复应用状态
     Call RestoreAppState(originalState)
     
-    ' 清空历史记录
-    Call InitializeBeautifyLog()
-    g_HasBeautifyHistory = False
+    ' 从堆栈中移除已撤销的操作
+    g_UndoStack.Remove g_UndoStack.Count
     
-    MsgBox "撤销完成！已移除本次美化样式。", vbInformation, "Excel美化工具"
+    MsgBox "撤销完成！" & vbCrLf & _
+           "剩余可撤销操作：" & g_UndoStack.Count, _
+           vbInformation, "Excel美化工具"
     Exit Sub
     
 ErrorHandler:
+    Call RestoreAppState(originalState)
+    MsgBox "撤销操作失败：" & Err.Description, vbCritical, "Excel美化工具"
+End Sub
+
+' 撤销所有美化操作
+Public Sub UndoAllBeautify()
+    Dim result As VbMsgBoxResult
+    Dim count As Long
+    
+    If g_UndoStack Is Nothing Then
+        Set g_UndoStack = New Collection
+    End If
+    
+    count = g_UndoStack.Count
+    If count = 0 Then
+        MsgBox "没有可撤销的美化操作", vbInformation, "Excel美化工具"
+        Exit Sub
+    End If
+    
+    result = MsgBox("确定要撤销所有 " & count & " 个美化操作吗？" & vbCrLf & _
+                   "此操作不可逆转！", _
+                   vbYesNo + vbQuestion, "Excel美化工具")
+    
+    If result = vbYes Then
+        ' 逐个撤销所有操作
+        Do While g_UndoStack.Count > 0
+            Call UndoBeautify()
+        Loop
+        
+        MsgBox "已撤销所有美化操作！", vbInformation, "Excel美化工具"
+    End If
+End Sub
     Call RestoreAppState(originalState)
     Call HandleError(ERR_UNDO_FAILED, "撤销操作失败: " & Err.Description)
 End Sub
@@ -234,11 +279,13 @@ End Sub
 ' =============================================================================
 
 ' 检测表格区域
+' 智能表格区域检测（避免UsedRange的不可靠性）
 Private Function DetectTableRange() As Range
     Dim selectedRange As Range
-    Dim usedRange As Range
+    Dim currentRegion As Range
+    Dim smartRange As Range
     
-    On Error GoTo UseUsedRange
+    On Error GoTo UseCurrentRegion
     
     ' 优先使用用户选择的区域
     Set selectedRange = Selection
@@ -247,14 +294,93 @@ Private Function DetectTableRange() As Range
         Exit Function
     End If
     
-UseUsedRange:
-    ' 回退到工作表的已用区域
-    Set usedRange = ActiveSheet.UsedRange
-    If Not usedRange Is Nothing And usedRange.Cells.Count > 1 Then
-        Set DetectTableRange = usedRange
+UseCurrentRegion:
+    On Error GoTo UseSmartDetection
+    
+    ' 使用CurrentRegion（比UsedRange更可靠）
+    Set currentRegion = ActiveCell.CurrentRegion
+    If Not currentRegion Is Nothing And currentRegion.Cells.Count > 1 Then
+        Set DetectTableRange = currentRegion
+        Exit Function
+    End If
+    
+UseSmartDetection:
+    On Error GoTo UseFallback
+    
+    ' 智能边界探测（处理CurrentRegion的空行/空列限制）
+    Set smartRange = GetSmartTableRange()
+    If Not smartRange Is Nothing And smartRange.Cells.Count > 1 Then
+        Set DetectTableRange = smartRange
+        Exit Function
+    End If
+    
+UseFallback:
+    ' 最后回退到UsedRange（但进行清理）
+    Dim cleanedRange As Range
+    Set cleanedRange = GetCleanedUsedRange()
+    If Not cleanedRange Is Nothing And cleanedRange.Cells.Count > 1 Then
+        Set DetectTableRange = cleanedRange
     Else
         Set DetectTableRange = Nothing
     End If
+End Function
+
+' 智能表格边界探测
+Private Function GetSmartTableRange() As Range
+    Dim startCell As Range
+    Dim lastRow As Long, lastCol As Long
+    Dim firstRow As Long, firstCol As Long
+    
+    On Error GoTo ErrorHandler
+    
+    Set startCell = ActiveCell
+    
+    ' 探测边界
+    firstRow = startCell.End(xlUp).Row
+    If firstRow = 1 Then firstRow = startCell.Row
+    
+    firstCol = startCell.End(xlToLeft).Column
+    If firstCol = 1 Then firstCol = startCell.Column
+    
+    lastRow = startCell.End(xlDown).Row
+    If lastRow = Rows.Count Then
+        ' 如果到了最后一行，向上查找最后一个有数据的行
+        lastRow = startCell.SpecialCells(xlCellTypeLastCell).Row
+    End If
+    
+    lastCol = startCell.End(xlToRight).Column
+    If lastCol = Columns.Count Then
+        ' 如果到了最后一列，向左查找最后一个有数据的列
+        lastCol = startCell.SpecialCells(xlCellTypeLastCell).Column
+    End If
+    
+    Set GetSmartTableRange = Range(Cells(firstRow, firstCol), Cells(lastRow, lastCol))
+    Exit Function
+    
+ErrorHandler:
+    Set GetSmartTableRange = Nothing
+End Function
+
+' 清理UsedRange（移除末尾的空行空列）
+Private Function GetCleanedUsedRange() As Range
+    Dim ws As Worksheet
+    Dim lastCell As Range
+    Dim usedRange As Range
+    
+    On Error GoTo ErrorHandler
+    
+    Set ws = ActiveSheet
+    Set usedRange = ws.UsedRange
+    
+    ' 查找真正的最后一个有数据的单元格
+    Set lastCell = usedRange.SpecialCells(xlCellTypeLastCell)
+    
+    ' 创建清理后的区域
+    Set GetCleanedUsedRange = ws.Range(usedRange.Cells(1, 1), lastCell)
+    Exit Function
+    
+ErrorHandler:
+    Set GetCleanedUsedRange = ActiveSheet.UsedRange
 End Function
 
 ' 验证美化操作
@@ -453,15 +579,27 @@ Private Function IsAllText(rng As Range) As Boolean
     IsAllText = (textCount = totalCount And totalCount > 0)
 End Function
 
-' 检测是否无空单元格
+' 检测是否无空单元格（安全处理错误值）
 Private Function HasNoEmpty(rng As Range) As Boolean
     Dim cell As Range
     
     For Each cell In rng.Cells
-        If IsEmpty(cell.Value) Or Trim(CStr(cell.Value)) = "" Then
+        ' 先检查是否为空
+        If IsEmpty(cell.Value) Then
             HasNoEmpty = False
             Exit Function
         End If
+        
+        ' 安全处理错误值和字符串转换
+        On Error Resume Next
+        If IsError(cell.Value) Then
+            ' 错误值（如#N/A）视为非空，但不进行字符串转换
+            On Error GoTo 0
+        ElseIf Trim(CStr(cell.Value)) = "" Then
+            HasNoEmpty = False
+            Exit Function
+        End If
+        On Error GoTo 0
     Next cell
     
     HasNoEmpty = True
@@ -618,24 +756,6 @@ End Function
 ' 主题样式系统
 ' =============================================================================
 
-' 获取主题配置
-Private Function GetThemeConfig(themeName As String) As BeautifyConfig
-    Dim config As BeautifyConfig
-    
-    Select Case themeName
-        Case "Business"
-            config = GetBusinessTheme()
-        Case "Financial"
-            config = GetFinancialTheme()
-        Case "Minimal"
-            config = GetMinimalTheme()
-        Case Else
-            config = GetBusinessTheme() ' 默认商务主题
-    End Select
-    
-    GetThemeConfig = config
-End Function
-
 ' 商务主题配置（默认开启斑马纹）
 Private Function GetBusinessTheme() As BeautifyConfig
     Dim config As BeautifyConfig
@@ -659,56 +779,6 @@ Private Function GetBusinessTheme() As BeautifyConfig
     End With
     
     GetBusinessTheme = config
-End Function
-
-' 财务主题配置（针对金额优化字体）
-Private Function GetFinancialTheme() As BeautifyConfig
-    Dim config As BeautifyConfig
-    
-    With config
-        .ThemeName = "Financial"
-        .PrimaryColor = RGB(34, 197, 94)      ' 绿色
-        .SecondaryColor = RGB(22, 163, 74)    ' 深绿色
-        .AccentColor = RGB(240, 253, 244)     ' 浅绿色
-        
-        .EnableHeaderBeautify = True
-        .EnableConditionalFormat = True
-        .EnableBorders = True
-        .EnableZebraStripes = True
-        .EnableFreezeHeader = True
-        
-        .HeaderFontSize = 11
-        .DataFontSize = 10
-        .BorderWeight = xlThin
-        .StripeOpacity = 0.03
-    End With
-    
-    GetFinancialTheme = config
-End Function
-
-' 极简主题配置
-Private Function GetMinimalTheme() As BeautifyConfig
-    Dim config As BeautifyConfig
-    
-    With config
-        .ThemeName = "Minimal"
-        .PrimaryColor = RGB(75, 85, 99)       ' 深灰色
-        .SecondaryColor = RGB(107, 114, 128)  ' 中灰色
-        .AccentColor = RGB(249, 250, 251)     ' 浅灰色
-        
-        .EnableHeaderBeautify = True
-        .EnableConditionalFormat = True
-        .EnableBorders = True
-        .EnableZebraStripes = False           ' 极简主题不使用斑马纹
-        .EnableFreezeHeader = False
-        
-        .HeaderFontSize = 10
-        .DataFontSize = 9
-        .BorderWeight = xlThin
-        .StripeOpacity = 0
-    End With
-    
-    GetMinimalTheme = config
 End Function
 
 ' 大表性能模式（自动关闭复杂样式）
@@ -765,13 +835,27 @@ Private Sub ApplyThemeStyle(analysis As TableAnalysis, config As BeautifyConfig)
     End If
 End Sub
 
-' 应用表头样式
+' 应用表头样式（商务蓝色渐变）
 Private Sub ApplyHeaderStyle(headerRange As Range, config As BeautifyConfig)
     If headerRange Is Nothing Then Exit Sub
     
     With headerRange
-        ' 背景色渐变
-        .Interior.Color = config.PrimaryColor
+        ' 背景色渐变实现（Excel 2007+支持，2003回退为纯色）
+        On Error Resume Next ' 兼容旧版Excel
+        If Val(Application.Version) >= 12 Then
+            ' Excel 2007及以上版本：渐变色
+            With .Interior
+                .Pattern = xlPatternLinearGradient
+                .Gradient.Degree = 90 ' 垂直渐变（从上到下）
+                .Gradient.ColorStops.Clear
+                .Gradient.ColorStops.Add(0).Color = config.PrimaryColor     ' 起始色（较亮）
+                .Gradient.ColorStops.Add(1).Color = RGB(30, 58, 138)        ' 结束色（深蓝，营造深度感）
+            End With
+        Else
+            ' Excel 2003回退为纯色
+            .Interior.Color = config.PrimaryColor
+        End If
+        On Error GoTo 0
         
         ' 字体样式
         .Font.Bold = True
@@ -806,16 +890,16 @@ Private Sub ApplyDataStyle(dataRange As Range, config As BeautifyConfig)
     Call ApplyNumericColumnStyle(dataRange)
 End Sub
 
-' 数值列样式优化
+' 数值列样式优化（保护用户NumberFormat）
 Private Sub ApplyNumericColumnStyle(dataRange As Range)
     Dim col As Range
     
     For Each col In dataRange.Columns
         If IsNumericColumn(col) Then
             With col
-                .Font.Name = GetOptimalFont("Number")
-                .HorizontalAlignment = xlRight
-                .NumberFormat = "#,##0.00"
+                .Font.Name = GetOptimalFont("Number")    ' 使用Consolas等等宽字体
+                .HorizontalAlignment = xlRight           ' 右对齐显示
+                ' 注意：不修改NumberFormat，保护用户自定义的小数位数、百分比、货币符号等格式
             End With
         End If
     Next col
@@ -1166,51 +1250,107 @@ End Function
 ' 撤销机制实现
 ' =============================================================================
 
-' 初始化撤销日志
+' 初始化撤销日志 - 创建新的操作记录并推入堆栈
 Private Sub InitializeBeautifyLog()
-    With g_BeautifyHistory
+    Dim newLog As BeautifyLog
+    
+    ' 初始化堆栈（如果未初始化）
+    If g_UndoStack Is Nothing Then
+        Set g_UndoStack = New Collection
+    End If
+    
+    ' 创建新的日志记录
+    With newLog
         .SessionId = Format(Now, "yyyymmddhhmmss") & "_" & Int(Rnd * 1000)
         .Timestamp = Now
         .CFRulesAdded = ""
         .StylesAdded = ""
         .TableStylesMap = ""        ' 表格样式映射：表名:原样式;...
     End With
-    g_HasBeautifyHistory = True
+    
+    ' 将新记录推入堆栈
+    g_UndoStack.Add newLog
+    
+    ' 限制堆栈大小（最多保留20个操作记录）
+    Do While g_UndoStack.Count > 20
+        g_UndoStack.Remove 1
+    Loop
+End Sub
+
+' 获取当前操作记录（堆栈顶部）
+Private Function GetCurrentLog() As BeautifyLog
+    If g_UndoStack Is Nothing Then
+        Set g_UndoStack = New Collection
+    End If
+    
+    If g_UndoStack.Count > 0 Then
+        GetCurrentLog = g_UndoStack(g_UndoStack.Count)
+    End If
+End Function
+
+' 更新当前操作记录（堆栈顶部）
+Private Sub UpdateCurrentLog(updatedLog As BeautifyLog)
+    If g_UndoStack Is Nothing Or g_UndoStack.Count = 0 Then
+        Exit Sub
+    End If
+    
+    ' 移除顶部记录并添加更新后的记录
+    g_UndoStack.Remove g_UndoStack.Count
+    g_UndoStack.Add updatedLog
 End Sub
 
 ' 记录表格样式变更
 Private Sub LogTableStyleChange(tblName As String, originalStyle As String)
     Dim mapping As String
-    mapping = tblName & ":" & originalStyle
+    Dim currentLog As BeautifyLog
     
-    If g_BeautifyHistory.TableStylesMap = "" Then
-        g_BeautifyHistory.TableStylesMap = mapping
+    mapping = tblName & ":" & originalStyle
+    currentLog = GetCurrentLog()
+    
+    If currentLog.TableStylesMap = "" Then
+        currentLog.TableStylesMap = mapping
     Else
-        g_BeautifyHistory.TableStylesMap = g_BeautifyHistory.TableStylesMap & ";" & mapping
+        currentLog.TableStylesMap = currentLog.TableStylesMap & ";" & mapping
     End If
+    
+    Call UpdateCurrentLog(currentLog)
 End Sub
 
 ' 记录样式创建
 Private Sub LogStyleCreation(styleName As String)
-    If g_BeautifyHistory.StylesAdded = "" Then
-        g_BeautifyHistory.StylesAdded = styleName
+    Dim currentLog As BeautifyLog
+    
+    currentLog = GetCurrentLog()
+    
+    If currentLog.StylesAdded = "" Then
+        currentLog.StylesAdded = styleName
     Else
-        g_BeautifyHistory.StylesAdded = g_BeautifyHistory.StylesAdded & ";" & styleName
+        currentLog.StylesAdded = currentLog.StylesAdded & ";" & styleName
     End If
+    
+    Call UpdateCurrentLog(currentLog)
 End Sub
 
 ' *** 统一日志记录接口（两段式：地址|标签）***
 Private Sub LogCFRule(ruleInfo As String)
-    If g_BeautifyHistory.CFRulesAdded = "" Then
-        g_BeautifyHistory.CFRulesAdded = ruleInfo
+    Dim currentLog As BeautifyLog
+    
+    currentLog = GetCurrentLog()
+    
+    If currentLog.CFRulesAdded = "" Then
+        currentLog.CFRulesAdded = ruleInfo
     Else
-        g_BeautifyHistory.CFRulesAdded = g_BeautifyHistory.CFRulesAdded & ";" & ruleInfo
+        currentLog.CFRulesAdded = currentLog.CFRulesAdded & ";" & ruleInfo
     End If
+    
+    Call UpdateCurrentLog(currentLog)
 End Sub
 
 ' *** 会话标签统一生成（全局一致）***
 Private Function GetSessionTag() As String
-    GetSessionTag = "ELO_" & g_BeautifyHistory.SessionId
+    Dim currentLog As BeautifyLog
+    currentLog = GetCurrentLog()
+    GetSessionTag = "ELO_" & currentLog.SessionId
 End Function
 
 ' 删除指定标签的条件格式规则
