@@ -286,8 +286,8 @@ Private Sub ApplyStandardConditionalFormat(dataRange As Range)
     Dim sessionTag As String
     Dim col As Range
     
-    ' 使用全局会话ID，确保撤销一致性
-    sessionTag = "ELO_" & g_BeautifyHistory.SessionId
+    ' *** 统一会话标签，确保撤销一致性 ***
+    sessionTag = GetSessionTag()  ' 使用全局统一标签
     
     On Error GoTo ErrorHandler
     Application.EnableEvents = False
@@ -341,9 +341,9 @@ Private Sub ClearTaggedRules(rng As Range, sessionTag As String)
 End Sub
 ```
 
-### 4.2 R1C1相对引用规则实现
+### 4.2 R1C1相对引用规则实现（真正的R1C1统一）
 ```vba
-' 错误值高亮（R1C1标准）
+' 错误值高亮（纯R1C1，无A1解析）
 Private Sub ApplyErrorHighlight(rng As Range, tag As String)
     Dim formula As String
     formula = "=ISERROR(RC)+N(0*LEN(""" & tag & """))"
@@ -355,11 +355,11 @@ Private Sub ApplyErrorHighlight(rng As Range, tag As String)
         .Priority = 1  ' 最高优先级
     End With
     
-    ' 记录规则用于撤销
-    LogCFRule rng.Address & "|" & tag & "|Error|1"
+    ' 统一两段式记录：地址|标签
+    LogCFRule rng.Address & "|" & tag
 End Sub
 
-' 空值标记（R1C1标准）
+' 空值标记（纯R1C1，无A1解析）
 Private Sub ApplyEmptyHighlight(rng As Range, tag As String)
     Dim formula As String
     formula = "=ISBLANK(RC)+N(0*LEN(""" & tag & """))"
@@ -370,34 +370,42 @@ Private Sub ApplyEmptyHighlight(rng As Range, tag As String)
         .Priority = 2
     End With
     
-    LogCFRule rng.Address & "|" & tag & "|Blank|2"
+    LogCFRule rng.Address & "|" & tag
 End Sub
 
-' 重复值检测（逐列R1C1，精确AppliesTo控制）
+' 重复值检测（R1C1列相对引用，避免列字母解析）
 Private Sub ApplyDuplicateHighlight(col As Range, tag As String)
-    Dim formula As String, colRange As String
+    Dim formula As String
     
-    ' 构建列数据区域的绝对引用（避免跨列误伤）
-    colRange = col.Address(True, True)  ' 绝对引用如$A$2:$A$100
-    formula = "=AND(RC<>"""",COUNTIF(" & colRange & ",RC)>1)+N(0*LEN(""" & tag & """))"
+    ' *** 关键修正：使用R1C1列相对引用 C[0]，避免Address解析 ***
+    formula = "=AND(RC<>"""",COUNTIF(C[0],RC)>1)+N(0*LEN(""" & tag & """))"
     
+    ' 精确控制AppliesTo到当前列
     With col.FormatConditions.Add(Type:=xlExpression, Formula1:=formula)
         .Interior.Color = RGB(255, 251, 235)  ' 浅黄背景
         .StopIfTrue = False
         .Priority = 3
     End With
     
-    LogCFRule col.Address & "|" & tag & "|Duplicate|3"
+    LogCFRule col.Address & "|" & tag
 End Sub
 
-' 负数检测（仅应用于数值列，仅改字体颜色避免NumberFormat覆盖）
+' 负数检测（仅表达式+字体颜色，不触碰NumberFormat）
 Private Sub ApplyNegativeHighlight(col As Range, tag As String)
     Dim formula As String
     formula = "=RC<0+N(0*LEN(""" & tag & """))"
     
+    ' *** 关键修正：仅设字体颜色，保护用户NumberFormat ***
     With col.FormatConditions.Add(Type:=xlExpression, Formula1:=formula)
-        ' 仅修改字体颜色，不覆盖用户的NumberFormat设置
         .Font.Color = RGB(220, 38, 38)  ' 红色字体
+        .Font.Bold = True                ' 可选加粗
+        .StopIfTrue = False
+        .Priority = 4
+        ' *** 不设置NumberFormat，保护用户小数位/千分位设置 ***
+    End With
+    
+    LogCFRule col.Address & "|" & tag
+End Sub
         .StopIfTrue = False
         .Priority = 4
     End With
@@ -466,7 +474,7 @@ Private Sub ApplyNegativeHighlight(col As Range, tag As String)
 End Sub
 ```
 
-### 4.3 辅助检测函数
+### 4.3 统一日志接口（两段式一致）
 ```vba
 ' 快速数值列检测（避免逐单元格遍历）
 Private Function IsNumericColumn(col As Range) As Boolean
@@ -492,7 +500,7 @@ Private Function IsNumericColumn(col As Range) As Boolean
     IsNumericColumn = (numericCount >= (checkCount * 0.6)) And checkCount > 0
 End Function
 
-' 统一日志记录接口
+' *** 统一日志记录接口（两段式：地址|标签）***
 Private Sub LogCFRule(ruleInfo As String)
     If g_BeautifyHistory.CFRulesAdded = "" Then
         g_BeautifyHistory.CFRulesAdded = ruleInfo
@@ -500,6 +508,11 @@ Private Sub LogCFRule(ruleInfo As String)
         g_BeautifyHistory.CFRulesAdded = g_BeautifyHistory.CFRulesAdded & ";" & ruleInfo
     End If
 End Sub
+
+' *** 会话标签统一生成（全局一致）***
+Private Function GetSessionTag() As String
+    GetSessionTag = "ELO_" & g_BeautifyHistory.SessionId
+End Function
 ```
 ```
 
@@ -668,12 +681,13 @@ Private Sub ApplyHeaderStyle(headerRange As Range, config As BeautifyConfig)
     End With
 End Sub
 
-' 条件格式实现隔行变色（智能自适应步长）
+' 条件格式实现隔行变色（单条CF规则，高性能可撤销）
 Private Sub ApplyZebraStripes(dataRange As Range, config As BeautifyConfig)
     Dim sessionTag As String, stripeStep As Long
-    Dim formula1 As String, formula2 As String
+    Dim formula As String
     
-    sessionTag = "ELO_" & g_BeautifyHistory.SessionId
+    ' *** 统一会话标签 ***
+    sessionTag = GetSessionTag()
     
     ' 智能步长：小表1行，中表2行，大表3行
     If dataRange.Rows.Count <= 50 Then
@@ -684,34 +698,81 @@ Private Sub ApplyZebraStripes(dataRange As Range, config As BeautifyConfig)
         stripeStep = 3  ' 每3行交替
     End If
     
-    ' R1C1条件格式实现（避免逐行着色）
-    ' 奇数组：ROW() MOD (step*2) <= step
-    formula1 = "=MOD(ROW()-" & dataRange.Row & "+1," & (stripeStep * 2) & ")<=" & stripeStep & _
-               "+N(0*LEN(""" & sessionTag & """))"
+    ' *** 单条条件格式实现斑马纹（可维护性强）***
+    ' 公式：偶数行/组高亮
+    formula = "=MOD(ROW()-" & dataRange.Row & "+1," & (stripeStep * 2) & ")<=" & stripeStep & _
+              "+N(0*LEN(""" & sessionTag & """))"
     
-    With dataRange.FormatConditions.Add(Type:=xlExpression, Formula1:=formula1)
+    With dataRange.FormatConditions.Add(Type:=xlExpression, Formula1:=formula)
         .Interior.Color = config.AccentColor
         .StopIfTrue = False
         .Priority = 10  ' 低优先级，不覆盖其他条件格式
     End With
     
-    LogCFRule dataRange.Address & "|" & sessionTag & "|ZebraStripe|10"
+    ' *** 统一两段式日志记录 ***
+    LogCFRule dataRange.Address & "|" & sessionTag
 End Sub
 
-' 优化字体选择（解决中西文混排问题）
+' 优化字体选择（兼容性+可读性优先）
 Private Function GetOptimalFont(contentType As String) As String
     Select Case contentType
         Case "ChineseHeader"
-            GetOptimalFont = "微软雅黑"  ' 中文标题
+            ' 中文标题：优先微软雅黑，回退宋体/苹方
+            If IsFontAvailable("微软雅黑") Then
+                GetOptimalFont = "微软雅黑"
+            ElseIf IsFontAvailable("苹方-简") Then
+                GetOptimalFont = "苹方-简"
+            Else
+                GetOptimalFont = "宋体"  ' 最后回退
+            End If
+            
         Case "ChineseData"
-            GetOptimalFont = "微软雅黑"  ' 中文数据
+            ' 中文数据：统一微软雅黑，删除Light字重
+            If IsFontAvailable("微软雅黑") Then
+                GetOptimalFont = "微软雅黑"
+            Else
+                GetOptimalFont = "宋体"  ' 回退
+            End If
+            
+        Case "NumericData", "FinancialData"
+            ' *** 数字/金额：等宽字体优先，解决对齐问题 ***
+            If IsFontAvailable("Consolas") Then
+                GetOptimalFont = "Consolas"  ' 首选等宽
+            ElseIf IsFontAvailable("Courier New") Then
+                GetOptimalFont = "Courier New"  ' 回退等宽
+            ElseIf IsFontAvailable("SF Mono") Then
+                GetOptimalFont = "SF Mono"  ' Mac等宽
+            ElseIf IsFontAvailable("Menlo") Then
+                GetOptimalFont = "Menlo"    ' Mac回退
+            Else
+                GetOptimalFont = "微软雅黑"  ' 最终回退
+            End If
+            
         Case "EnglishContent"
             GetOptimalFont = "Calibri"  ' 英文内容
-        Case "NumericData"
-            GetOptimalFont = "Consolas"  ' 数字/金额，等宽友好
+            
         Case Else
-            GetOptimalFont = "微软雅黑"  ' 默认中英文兼容
+            ' 默认中英文兼容
+            GetOptimalFont = "微软雅黑"
     End Select
+End Function
+
+' 字体可用性检查
+Private Function IsFontAvailable(fontName As String) As Boolean
+    On Error Resume Next
+    IsFontAvailable = (Application.CommandBars.FindControl(Id:=1728).List(fontName) <> "")
+    If Err.Number <> 0 Then
+        ' 简化检查：尝试设置字体看是否成功
+        Dim testRange As Range
+        Set testRange = ActiveSheet.Range("A1")
+        Dim originalFont As String
+        originalFont = testRange.Font.Name
+        testRange.Font.Name = fontName
+        IsFontAvailable = (testRange.Font.Name = fontName)
+        testRange.Font.Name = originalFont
+        Err.Clear
+    End If
+    On Error GoTo 0
 End Function
 ```
 
